@@ -72,5 +72,5 @@ if __name__ == '__main__':
     config = Config()
     config.bind = [f"0.0.0.0:{port}"]
 
-    # Chạy ứng dụng với Hypercorn
-    hypercorn.asyncio.serve(app, config)
+    # Chạy ứng dụng với Hypercorn sử dụng asyncio.run
+    asyncio.run(hypercorn.asyncio.serve(app, config))  # Dùng asyncio.run thay vì asyncio.get_event_loop()
