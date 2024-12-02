@@ -1,23 +1,82 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>WebRTC Video Call</title>
-    <link rel="stylesheet" href="style.css">
+    <script>
+        let localStream, peerConnection;
+
+        const signalingServer = "http://localhost:5000";
+
+        async function startCall() {
+            // Get user media
+            localStream = await navigator.mediaDevices.getUserMedia({
+                video: true,
+                audio: true
+            });
+            document.getElementById("localVideo").srcObject = localStream;
+
+            // Create peer connection
+            peerConnection = new RTCPeerConnection();
+
+            // Add local stream tracks to peer connection
+            localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
+
+            // Handle ICE candidates
+            peerConnection.onicecandidate = (event) => {
+                if (event.candidate) {
+                    fetch(`${signalingServer}/candidate`, {
+                        method: "POST",
+                        headers: {
+                            "Content-Type": "application/json"
+                        },
+                        body: JSON.stringify({
+                            candidate: event.candidate
+                        })
+                    });
+                }
+            };
+
+            // Handle remote stream
+            peerConnection.ontrack = (event) => {
+                document.getElementById("remoteVideo").srcObject = event.streams[0];
+            };
+
+            // Create SDP offer
+            const offer = await peerConnection.createOffer();
+            await peerConnection.setLocalDescription(offer);
+
+            // Send offer to server
+            const response = await fetch(`${signalingServer}/offer`, {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json"
+                },
+                body: JSON.stringify({
+                    sdp: offer.sdp
+                })
+            });
+            const {
+                sdp: answerSdp
+            } = await response.json();
+
+            // Set remote SDP answer
+            const answer = new RTCSessionDescription({
+                type: "answer",
+                sdp: answerSdp
+            });
+            await peerConnection.setRemoteDescription(answer);
+        }
+    </script>
 </head>
+
 <body>
-    <div class="container">
-        <h1>WebRTC Video Call</h1>
-        <div class="video-container">
-            <video id="yourVideo" autoplay muted playsinline></video>
-            <video id="friendsVideo" autoplay playsinline></video>
-        </div>
-        <div class="button-container">
-            <button id="callButton">Start Call</button>
-            <button id="resetButton">Reset</button>
-        </div>
-    </div>
-    <script type="module" src="script.js"></script>
+    <h1>WebRTC Video Call</h1>
+    <video id="localVideo" autoplay muted></video>
+    <video id="remoteVideo" autoplay></video>
+    <button onclick="startCall()">Start Call</button>
 </body>
+
 </html>
