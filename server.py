@@ -1,48 +1,74 @@
-import websockets
 import asyncio
-import json
+from flask import Flask, request, jsonify
 from aiortc import RTCPeerConnection, RTCSessionDescription
+from aiortc.contrib.media import MediaRelay, MediaPlayer, MediaRecorder
+import logging
 
-clients = {}
+# Flask app for signaling
+app = Flask(__name__)
 
-async def signaling(websocket, path):
-    try:
-        # Nhận thông điệp từ client
-        message = await websocket.recv()
-        message = json.loads(message)
+# Relay for forwarding media streams
+relay = MediaRelay()
 
-        if message['type'] == 'offer':
-            # Xử lý offer từ client
-            offer = RTCSessionDescription(sdp=message['sdp'], type='offer')
-            pc = RTCPeerConnection()
-            pc_id = f"PeerConnection({id(pc)})"
-            clients[pc_id] = pc
-            await pc.setRemoteDescription(offer)
+# Peer connection instances
+pcs = set()
 
-            # Tạo answer và gửi lại cho client
-            answer = await pc.createAnswer()
-            await pc.setLocalDescription(answer)
-            await websocket.send(json.dumps({
-                'type': 'answer',
-                'sdp': pc.localDescription.sdp
-            }))
-        elif message['type'] == 'candidate':
-            # Xử lý ICE candidate
-            candidate = message['candidate']
-            for pc in clients.values():
-                if pc.remoteDescription:
-                    await pc.addIceCandidate(candidate)
-    except Exception as e:
-        print(f"Error handling WebSocket message: {e}")
-    finally:
-        # Đảm bảo loại bỏ client sau khi kết thúc
-        await websocket.close()
 
-async def main():
-    # Tạo WebSocket server
-    server = await websockets.serve(signaling, "0.0.0.0", 5000)
-    print("Server started on ws://localhost:5000")
-    await server.wait_closed()
+# Route to handle offer from the client
+@app.route('/offer', methods=['POST'])
+async def offer():
+    params = request.json
+    offer_sdp = params["sdp"]
 
+    # Create a new peer connection
+    pc = RTCPeerConnection()
+    pcs.add(pc)
+
+    @pc.on("track")
+    def on_track(track):
+        print(f"Received track: {track.kind}")
+        # Forward the track using a relay or process it
+        if track.kind == "video":
+            relay.subscribe(track)
+
+    # Set remote description (SDP from client)
+    offer = RTCSessionDescription(sdp=offer_sdp, type="offer")
+    await pc.setRemoteDescription(offer)
+
+    # Create answer and set it as local description
+    answer = await pc.createAnswer()
+    await pc.setLocalDescription(answer)
+
+    # Send answer back to the client
+    response = {
+        "sdp": pc.localDescription.sdp,
+        "type": pc.localDescription.type
+    }
+    return jsonify(response)
+
+
+# Route to handle ICE candidates
+@app.route('/candidate', methods=['POST'])
+async def candidate():
+    params = request.json
+    candidate = params["candidate"]
+
+    # Add ICE candidate to all peer connections
+    for pc in pcs:
+        await pc.addIceCandidate(candidate)
+    return jsonify({"status": "ok"})
+
+
+# Cleanup peer connections
+@app.route('/close', methods=['POST'])
+def close():
+    for pc in pcs:
+        asyncio.run(pc.close())
+    pcs.clear()
+    return jsonify({"status": "closed"})
+
+
+# Run the Flask app
 if __name__ == '__main__':
-    asyncio.run(main())
+    logging.basicConfig(level=logging.INFO)
+    app.run(host='0.0.0.0', port=5000)
