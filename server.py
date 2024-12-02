@@ -36,7 +36,7 @@ async def signaling(websocket, path):
 async def main():
     # WebSocket server chạy trên localhost:5000
     server = await websockets.serve(signaling, '0.0.0.0', 5000)
-    print("Server started on ws://localhost:5000")
+    print("Server started on wss://localhost:5000")
     await server.wait_closed()
 
 if __name__ == '__main__':
