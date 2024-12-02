@@ -3,11 +3,12 @@ from flask_cors import CORS
 from flask_socketio import SocketIO, emit
 
 app = Flask(__name__)
-CORS(app, origins=["https://haibadguy.github.io"])  # Cấu hình CORS cho GitHub Pages
-socketio = SocketIO(app, async_mode='eventlet')  # Sử dụng eventlet
 
-# Lưu trữ các phiên kết nối của WebRTC
-connections = {}
+# Cấu hình CORS, cho phép tất cả các origin hoặc chỉ một số origin cụ thể
+CORS(app, origins=["https://haibadguy.github.io"], supports_credentials=True)
+
+# Cấu hình SocketIO
+socketio = SocketIO(app, async_mode='eventlet')
 
 @app.route('/')
 def index():
