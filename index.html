@@ -5,26 +5,27 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>WebRTC Video Call</title>
+    <link rel="stylesheet" href="/static/style.css"> <!-- Thêm liên kết đến CSS -->
     <script>
         let localStream, peerConnection;
 
-        const signalingServer = "http://localhost:5000";
+        const signalingServer = "https://pywebrtc.onrender.com";
 
         async function startCall() {
-            // Get user media
+            // Lấy media từ camera và microphone
             localStream = await navigator.mediaDevices.getUserMedia({
                 video: true,
                 audio: true
             });
             document.getElementById("localVideo").srcObject = localStream;
 
-            // Create peer connection
+            // Tạo peer connection
             peerConnection = new RTCPeerConnection();
 
-            // Add local stream tracks to peer connection
+            // Thêm các track của local stream vào peer connection
             localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
 
-            // Handle ICE candidates
+            // Xử lý ICE candidates
             peerConnection.onicecandidate = (event) => {
                 if (event.candidate) {
                     fetch(`${signalingServer}/candidate`, {
@@ -39,16 +40,16 @@
                 }
             };
 
-            // Handle remote stream
+            // Xử lý remote stream
             peerConnection.ontrack = (event) => {
                 document.getElementById("remoteVideo").srcObject = event.streams[0];
             };
 
-            // Create SDP offer
+            // Tạo SDP offer
             const offer = await peerConnection.createOffer();
             await peerConnection.setLocalDescription(offer);
 
-            // Send offer to server
+            // Gửi offer đến server
             const response = await fetch(`${signalingServer}/offer`, {
                 method: "POST",
                 headers: {
@@ -62,7 +63,7 @@
                 sdp: answerSdp
             } = await response.json();
 
-            // Set remote SDP answer
+            // Thiết lập SDP answer từ server
             const answer = new RTCSessionDescription({
                 type: "answer",
                 sdp: answerSdp
@@ -74,8 +75,10 @@
 
 <body>
     <h1>WebRTC Video Call</h1>
-    <video id="localVideo" autoplay muted></video>
-    <video id="remoteVideo" autoplay></video>
+    <div class="video-container">
+        <video id="localVideo" autoplay muted></video>
+        <video id="remoteVideo" autoplay></video>
+    </div>
     <button onclick="startCall()">Start Call</button>
 </body>
 
