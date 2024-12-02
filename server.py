@@ -1,20 +1,22 @@
+from quart import Quart, request, jsonify, send_from_directory
+from quart_cors import cors
 import logging
-import asyncio
 import os
-from quart import Quart, request, jsonify
 from aiortc import RTCPeerConnection, RTCSessionDescription
 import hypercorn.asyncio
 from hypercorn.config import Config
 
-# Tạo ứng dụng Quart
-app = Quart(__name__, static_folder="static")  # Đặt folder static là "static"
+app = Quart(__name__)
 
-pcs = set()  # Set để quản lý peer connections
+# Cấu hình CORS
+app = cors(app, allow_origin="https://haibadguy.github.io")  # Cho phép truy cập từ GitHub Pages
 
 # Route phục vụ index.html
 @app.route('/')
 async def index():
-    return app.send_static_file('index.html')
+    return await send_from_directory('static', 'index.html')
+
+pcs = set()  # Set để quản lý peer connections
 
 # Route cho offer
 @app.route('/offer', methods=['POST'])
@@ -66,11 +68,11 @@ if __name__ == '__main__':
     logging.basicConfig(level=logging.INFO)
 
     # Lấy cổng từ biến môi trường PORT
-    port = int(os.environ.get("PORT", 5000))
+    port = int(os.environ.get("PORT", 10000))
 
     # Cấu hình Hypercorn (ASGI server)
     config = Config()
     config.bind = [f"0.0.0.0:{port}"]
 
-    # Chạy ứng dụng với Hypercorn sử dụng asyncio.run
-    asyncio.run(hypercorn.asyncio.serve(app, config))  # Dùng asyncio.run thay vì asyncio.get_event_loop()
+    # Chạy ứng dụng với Hypercorn
+    hypercorn.asyncio.run(app, config)  # Không cần asyncio.run ở đây
