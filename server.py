@@ -1,7 +1,8 @@
 from flask import Flask, request, jsonify
-import json
+from flask_cors import CORS  # Thêm dòng này
 
 app = Flask(__name__)
+CORS(app)
 
 # Lưu trữ các phiên kết nối của WebRTC
 connections = {}
