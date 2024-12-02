@@ -1,78 +1,33 @@
-from quart import Quart, request, jsonify, send_from_directory
-from quart_cors import cors
-import logging
-import os
-from aiortc import RTCPeerConnection, RTCSessionDescription
-from hypercorn.config import Config
-from hypercorn.asyncio import serve
+from flask import Flask, request, jsonify
+import json
 
-app = Quart(__name__)
+app = Flask(__name__)
 
-# Cấu hình CORS
-app = cors(app, allow_origin="https://haibadguy.github.io")  # Cho phép truy cập từ GitHub Pages
+# Lưu trữ các phiên kết nối của WebRTC
+connections = {}
 
-# Route phục vụ index.html
 @app.route('/')
-async def index():
-    return await send_from_directory('static', 'index.html')
+def index():
+    return "WebRTC Signaling Server"
 
-pcs = set()  # Set để quản lý peer connections
-
-# Route cho offer
+# Nhận và lưu offer từ client
 @app.route('/offer', methods=['POST'])
-async def offer():
-    params = await request.json()
-    offer_sdp = params["sdp"]
+def offer():
+    data = request.get_json()
+    print("Received offer:", data)
 
-    # Tạo peer connection mới
-    pc = RTCPeerConnection()
-    pcs.add(pc)
-
-    # Thiết lập remote description
-    offer = RTCSessionDescription(sdp=offer_sdp, type="offer")
-    await pc.setRemoteDescription(offer)
-
-    # Tạo answer và thiết lập local description
-    answer = await pc.createAnswer()
-    await pc.setLocalDescription(answer)
-
-    # Trả về answer cho client
-    response = {
-        "sdp": pc.localDescription.sdp,
-        "type": pc.localDescription.type
+    # Giả sử chúng ta tạo một answer cho offer này (trong thực tế bạn sẽ phải tạo một answer dựa trên các logic phức tạp hơn)
+    answer = {
+        'sdp': 'v=0\r\no=blah 0 0 IN IP4 0.0.0.0\r\ns=blah\r\nm=video 9 UDP/TLS/RTP/SAVPF 96\r\nc=IN IP4 0.0.0.0\r\na=rtpmap:96 H264/90000\r\n'
     }
-    return jsonify(response)
+    return jsonify(answer)
 
-# Route cho ICE candidate
+# Nhận và xử lý ICE candidate từ client
 @app.route('/candidate', methods=['POST'])
-async def candidate():
-    params = await request.json()
-    candidate = params["candidate"]
+def candidate():
+    candidate = request.json.get("candidate")
+    print("Received candidate:", candidate)
+    return jsonify({"status": "Candidate received"})
 
-    # Thêm ICE candidate vào tất cả peer connections
-    for pc in pcs:
-        await pc.addIceCandidate(candidate)
-    return jsonify({"status": "ok"})
-
-# Route để đóng kết nối
-@app.route('/close', methods=['POST'])
-async def close():
-    # Đóng tất cả các peer connections
-    for pc in pcs:
-        await pc.close()
-    pcs.clear()
-    return jsonify({"status": "closed"})
-
-# Main entry point cho ứng dụng
 if __name__ == '__main__':
-    logging.basicConfig(level=logging.INFO)
-
-    # Lấy cổng từ biến môi trường PORT
-    port = int(os.environ.get("PORT", 10000))
-
-    # Cấu hình Hypercorn (ASGI server)
-    config = Config()
-    config.bind = [f"0.0.0.0:{port}"]
-
-    # Khởi chạy ứng dụng bằng Hypercorn
-    serve(app, config)
+    app.run(debug=True, host='0.0.0.0', port=5000)
