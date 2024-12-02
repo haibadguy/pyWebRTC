@@ -1,14 +1,14 @@
-import asyncio
-from flask import Flask, request, jsonify
+from quart import Quart, request, jsonify
 from aiortc import RTCPeerConnection, RTCSessionDescription
 import logging
+import asyncio
 
-app = Flask(__name__)
+app = Quart(__name__)
 pcs = set()  # Set to manage peer connections
 
 @app.route('/offer', methods=['POST'])
 async def offer():
-    params = request.json
+    params = await request.json
     offer_sdp = params["sdp"]
 
     # Create new peer connection
@@ -32,7 +32,7 @@ async def offer():
 
 @app.route('/candidate', methods=['POST'])
 async def candidate():
-    params = request.json
+    params = await request.json
     candidate = params["candidate"]
 
     # Add ICE candidate to all peer connections
@@ -41,9 +41,9 @@ async def candidate():
     return jsonify({"status": "ok"})
 
 @app.route('/close', methods=['POST'])
-def close():
+async def close():
     for pc in pcs:
-        asyncio.run(pc.close())
+        await pc.close()
     pcs.clear()
     return jsonify({"status": "closed"})
 
