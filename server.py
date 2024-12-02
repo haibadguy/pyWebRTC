@@ -3,7 +3,7 @@ from quart_cors import cors
 import logging
 import os
 from aiortc import RTCPeerConnection, RTCSessionDescription
-import hypercorn.asyncio
+import hypercorn
 from hypercorn.config import Config
 
 app = Quart(__name__)
@@ -74,5 +74,4 @@ if __name__ == '__main__':
     config = Config()
     config.bind = [f"0.0.0.0:{port}"]
 
-    # Chạy ứng dụng với Hypercorn
-    hypercorn.asyncio.run(app, config)  # Không cần asyncio.run ở đây
+    hypercorn.run(app, config) # Không cần asyncio.run ở đây
