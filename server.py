@@ -43,4 +43,17 @@ def handle_disconnect():
 
 if __name__ == '__main__':
     # Chạy server với socketio
-    socketio.run(app, debug=True, host='0.0.0.0', port=5000)
+    if __name__ == '__main__':
+        from gunicorn.app.base import BaseApplication
+
+        class GunicornApp(BaseApplication):
+            def __init__(self, app):
+                self.app = app
+                super().__init__()
+
+            def load(self):
+                return self.app
+
+        # Khởi chạy Gunicorn với Flask-SocketIO
+        app = socketio.WSGIApp(app)
+        GunicornApp(app).run()
