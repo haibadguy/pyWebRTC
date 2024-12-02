@@ -1,4 +1,3 @@
-import ssl
 import websockets
 import asyncio
 import websockets
@@ -35,13 +34,9 @@ async def signaling(websocket, path):
                 await pc.addIceCandidate(candidate)
 
 async def main():
-    # Tạo đối tượng SSLContext
-    ssl_context = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
-    ssl_context.load_cert_chain(certfile="path/to/cert.pem", keyfile="path/to/key.pem")
-
-    # WebSocket server với SSL
-    server = await websockets.serve(signaling, '0.0.0.0', 5000, ssl=ssl_context)
-    print("Server started on wss://localhost:5000")
+    # WebSocket server không sử dụng SSL (sử dụng wss:// từ Render)
+    server = await websockets.serve(signaling, '0.0.0.0', 5000)
+    print("Server started on ws://localhost:5000")
     await server.wait_closed()
 
 if __name__ == '__main__':
