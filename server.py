@@ -1,6 +1,5 @@
 import websockets
 import asyncio
-import websockets
 from aiortc import RTCPeerConnection, RTCSessionDescription
 import json
 
@@ -34,8 +33,8 @@ async def signaling(websocket, path):
                 await pc.addIceCandidate(candidate)
 
 async def main():
-    # WebSocket server không sử dụng SSL (sử dụng wss:// từ Render)
-    server = await websockets.serve(signaling, '0.0.0.0', 5000)
+    # WebSocket server không sử dụng SSL (sử dụng ws:// từ Render)
+    server = await websockets.serve(signaling, '0.0.0.0', 5000)  # Chạy trên cổng 5000
     print("Server started on ws://localhost:5000")
     await server.wait_closed()
 
