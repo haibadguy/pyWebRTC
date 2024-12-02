@@ -1,49 +1,79 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 
 <head>
-    <title>WebRTC Client</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WebRTC Video Call</title>
     <script>
-        async function startCall() {
-            const pc = new RTCPeerConnection();
+        let localStream, peerConnection;
 
-            // Thiết lập video track
-            const localStream = await navigator.mediaDevices.getUserMedia({
+        const signalingServer = "http://localhost:5000";
+
+        async function startCall() {
+            // Get user media
+            localStream = await navigator.mediaDevices.getUserMedia({
                 video: true,
                 audio: true
             });
-            document.getElementById('localVideo').srcObject = localStream;
-            localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
+            document.getElementById("localVideo").srcObject = localStream;
 
-            // Tạo offer và gửi tới server
-            const offer = await pc.createOffer();
-            await pc.setLocalDescription(offer);
+            // Create peer connection
+            peerConnection = new RTCPeerConnection();
 
-            const response = await fetch('http://localhost:5000/api/offer', {
-                method: 'POST',
+            // Add local stream tracks to peer connection
+            localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
+
+            // Handle ICE candidates
+            peerConnection.onicecandidate = (event) => {
+                if (event.candidate) {
+                    fetch(`${signalingServer}/candidate`, {
+                        method: "POST",
+                        headers: {
+                            "Content-Type": "application/json"
+                        },
+                        body: JSON.stringify({
+                            candidate: event.candidate
+                        })
+                    });
+                }
+            };
+
+            // Handle remote stream
+            peerConnection.ontrack = (event) => {
+                document.getElementById("remoteVideo").srcObject = event.streams[0];
+            };
+
+            // Create SDP offer
+            const offer = await peerConnection.createOffer();
+            await peerConnection.setLocalDescription(offer);
+
+            // Send offer to server
+            const response = await fetch(`${signalingServer}/offer`, {
+                method: "POST",
                 headers: {
-                    'Content-Type': 'application/json'
+                    "Content-Type": "application/json"
                 },
                 body: JSON.stringify({
-                    offer: pc.localDescription.sdp
+                    sdp: offer.sdp
                 })
             });
             const {
-                answer
+                sdp: answerSdp
             } = await response.json();
-            await pc.setRemoteDescription(new RTCSessionDescription({
-                type: 'answer',
-                sdp: answer
-            }));
 
-            pc.ontrack = event => {
-                document.getElementById('remoteVideo').srcObject = event.streams[0];
-            };
+            // Set remote SDP answer
+            const answer = new RTCSessionDescription({
+                type: "answer",
+                sdp: answerSdp
+            });
+            await peerConnection.setRemoteDescription(answer);
         }
     </script>
 </head>
 
 <body>
+    <h1>WebRTC Video Call</h1>
     <video id="localVideo" autoplay muted></video>
     <video id="remoteVideo" autoplay></video>
     <button onclick="startCall()">Start Call</button>
