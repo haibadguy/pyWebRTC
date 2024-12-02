@@ -28,7 +28,7 @@
     </div>
 
     <script>
-        const socket = new WebSocket("ws://pywebrtc.onrender.com/");  <!-- Đảm bảo rằng sử dụng ws:// nếu không dùng SSL -->
+        const socket = new WebSocket("wss://pywebrtc.onrender.com/");
 
         let peerConnection = null;
         let localStream = null;
