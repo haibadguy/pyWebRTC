@@ -1,4 +1,5 @@
-# server.py
+import ssl
+import websockets
 import asyncio
 import websockets
 from aiortc import RTCPeerConnection, RTCSessionDescription
@@ -34,8 +35,12 @@ async def signaling(websocket, path):
                 await pc.addIceCandidate(candidate)
 
 async def main():
-    # WebSocket server chạy trên localhost:5000
-    server = await websockets.serve(signaling, '0.0.0.0', 5000)
+    # Tạo đối tượng SSLContext
+    ssl_context = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
+    ssl_context.load_cert_chain(certfile="path/to/cert.pem", keyfile="path/to/key.pem")
+
+    # WebSocket server với SSL
+    server = await websockets.serve(signaling, '0.0.0.0', 5000, ssl=ssl_context)
     print("Server started on wss://localhost:5000")
     await server.wait_closed()
 
