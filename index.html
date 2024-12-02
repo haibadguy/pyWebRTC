@@ -1,103 +1,52 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>WebRTC Video Call</title>
-    <script src="https://cdn.socket.io/4.0.1/socket.io.min.js"></script>
-    <style>
-        video {
-            width: 45%;
-            margin: 5px;
-        }
-
-        #controls {
-            margin-top: 10px;
-        }
-    </style>
-</head>
-
-<body>
-    <h1>WebRTC Video Call</h1>
-    <video id="localVideo" autoplay muted></video>
-    <video id="remoteVideo" autoplay></video>
-    <div id="controls">
-        <button id="startCall">Start Call</button>
-        <button id="endCall">End Call</button>
-    </div>
-
+    <title>WebRTC Client</title>
     <script>
-        const socket = new WebSocket("wss://pywebrtc.onrender.com/");
-
-        let peerConnection = null;
-        let localStream = null;
-
-        // Lấy stream từ camera và microphone
         async function startCall() {
-            localStream = await navigator.mediaDevices.getUserMedia({
+            const pc = new RTCPeerConnection();
+
+            // Thiết lập video track
+            const localStream = await navigator.mediaDevices.getUserMedia({
                 video: true,
                 audio: true
             });
             document.getElementById('localVideo').srcObject = localStream;
+            localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
 
-            peerConnection = new RTCPeerConnection();
-            peerConnection.addEventListener('icecandidate', handleICECandidate);
-            peerConnection.addEventListener('track', handleRemoteStream);
+            // Tạo offer và gửi tới server
+            const offer = await pc.createOffer();
+            await pc.setLocalDescription(offer);
 
-            // Thêm các track vào PeerConnection
-            localStream.getTracks().forEach(track => {
-                peerConnection.addTrack(track, localStream);
+            const response = await fetch('http://localhost:5000/api/offer', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    offer: pc.localDescription.sdp
+                })
             });
-
-            // Tạo offer và gửi qua WebSocket
-            const offer = await peerConnection.createOffer();
-            await peerConnection.setLocalDescription(offer);
-            socket.send(JSON.stringify({
-                type: 'offer',
-                sdp: offer.sdp
+            const {
+                answer
+            } = await response.json();
+            await pc.setRemoteDescription(new RTCSessionDescription({
+                type: 'answer',
+                sdp: answer
             }));
+
+            pc.ontrack = event => {
+                document.getElementById('remoteVideo').srcObject = event.streams[0];
+            };
         }
-
-        // Khi nhận được remote stream, hiển thị nó
-        function handleRemoteStream(event) {
-            document.getElementById('remoteVideo').srcObject = event.streams[0];
-        }
-
-        // Khi nhận được ICE candidate từ server, thêm vào PeerConnection
-        function handleICECandidate(event) {
-            if (event.candidate) {
-                socket.send(JSON.stringify({
-                    type: 'candidate',
-                    candidate: event.candidate
-                }));
-            }
-        }
-
-        // Khi nhận được message từ WebSocket
-        socket.onmessage = async (event) => {
-            const message = JSON.parse(event.data);
-            if (message.type === 'answer') {
-                // Đặt remote description khi nhận được answer từ server
-                await peerConnection.setRemoteDescription(new RTCSessionDescription({
-                    type: 'answer',
-                    sdp: message.sdp
-                }));
-            } else if (message.type === 'candidate') {
-                // Thêm ICE candidate
-                await peerConnection.addIceCandidate(new RTCIceCandidate(message.candidate));
-            }
-        };
-
-        // Điều khiển start và end cuộc gọi
-        document.getElementById('startCall').addEventListener('click', startCall);
-        document.getElementById('endCall').addEventListener('click', () => {
-            peerConnection.close();
-            peerConnection = null;
-            document.getElementById('localVideo').srcObject = null;
-            document.getElementById('remoteVideo').srcObject = null;
-        });
     </script>
+</head>
+
+<body>
+    <video id="localVideo" autoplay muted></video>
+    <video id="remoteVideo" autoplay></video>
+    <button onclick="startCall()">Start Call</button>
 </body>
 
 </html>
