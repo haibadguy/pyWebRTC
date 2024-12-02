@@ -1,4 +1,3 @@
-<!-- index.html -->
 <!DOCTYPE html>
 <html lang="en">
 
@@ -29,7 +28,7 @@
     </div>
 
     <script>
-        const socket = new WebSocket("wss://pywebrtc.onrender.com/");
+        const socket = new WebSocket("ws://pywebrtc.onrender.com/");  <!-- Đảm bảo rằng sử dụng ws:// nếu không dùng SSL -->
 
         let peerConnection = null;
         let localStream = null;
