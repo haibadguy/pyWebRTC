@@ -6,10 +6,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>WebRTC Video Call</title>
     <link rel="stylesheet" href="style.css"> <!-- Thêm liên kết đến CSS -->
+    <script src="https://cdn.socket.io/4.0.0/socket.io.min.js"></script> <!-- Thêm socket.io -->
     <script>
-        let localStream, peerConnection;
-
-        const signalingServer = "https://pywebrtc.onrender.com";
+        let localStream, peerConnection, socket;
+        const signalingServer = "https://pywebrtc.onrender.com"; // URL server signaling
 
         async function startCall() {
             // Lấy media từ camera và microphone
@@ -28,15 +28,7 @@
             // Xử lý ICE candidates
             peerConnection.onicecandidate = (event) => {
                 if (event.candidate) {
-                    fetch(`${signalingServer}/candidate`, {
-                        method: "POST",
-                        headers: {
-                            "Content-Type": "application/json"
-                        },
-                        body: JSON.stringify({
-                            candidate: event.candidate
-                        })
-                    });
+                    socket.emit('candidate', event.candidate);
                 }
             };
 
@@ -49,27 +41,41 @@
             const offer = await peerConnection.createOffer();
             await peerConnection.setLocalDescription(offer);
 
-            // Gửi offer đến server
-            const response = await fetch(`${signalingServer}/offer`, {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/json"
-                },
-                body: JSON.stringify({
-                    sdp: offer.sdp
-                })
-            });
-            const {
-                sdp: answerSdp
-            } = await response.json();
-
-            // Thiết lập SDP answer từ server
-            const answer = new RTCSessionDescription({
-                type: "answer",
-                sdp: answerSdp
-            });
-            await peerConnection.setRemoteDescription(answer);
+            // Gửi offer qua WebSocket
+            socket.emit('offer', offer);
         }
+
+        function initSocket() {
+            // Kết nối tới signaling server
+            socket = io(signalingServer);
+
+            // Nhận offer từ server
+            socket.on('offer', async (offer) => {
+                await peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
+                const answer = await peerConnection.createAnswer();
+                await peerConnection.setLocalDescription(answer);
+
+                // Gửi answer lại server
+                socket.emit('answer', answer);
+            });
+
+            // Nhận answer từ server
+            socket.on('answer', async (answer) => {
+                await peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
+            });
+
+            // Nhận ICE candidate từ server
+            socket.on('candidate', async (candidate) => {
+                try {
+                    await peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
+                } catch (e) {
+                    console.error('Failed to add ICE candidate', e);
+                }
+            });
+        }
+
+        window.onload = initSocket; // Khởi tạo WebSocket khi trang web được tải
+
     </script>
 </head>
 
