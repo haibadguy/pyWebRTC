@@ -3,7 +3,7 @@ from flask_socketio import SocketIO, emit
 import os
 
 app = Flask(__name__)
-socketio = SocketIO(app, cors_allowed_origins=["https://haibadguy.github.io"])
+socketio = SocketIO(app, cors_allowed_origins="*")
 
 @app.route('/')
 def index():
