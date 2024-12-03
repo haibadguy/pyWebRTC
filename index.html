@@ -4,93 +4,88 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>WebRTC Signaling</title>
-    <script src="https://cdn.socket.io/4.0.1/socket.io.min.js"></script>
-    <script src="https://webrtc.github.io/adapter/adapter-latest.js"></script>
-</head>
+    <title>WebRTC Video Call</title>
+    <link rel="stylesheet" href="./style.css">
+    <script src="https://cdn.socket.io/4.0.0/socket.io.min.js"></script>
 
-<body>
-    <h1>WebRTC Signaling Server</h1>
     <script>
-        // Configuration for peer connection
-        const configuration = {
-            iceServers: [{
-                    urls: 'stun:stun.l.google.com:19302'
-                } // Google STUN server
-            ]
-        };
+        let localStream, peerConnection, socket;
+        const signalingServer = "https://pywebrtc.onrender.com"; // URL server signaling
 
-        let peerConnection;
-        let iceCandidates = [];
+        async function startCall() {
+            // Lấy media từ camera và microphone
+            localStream = await navigator.mediaDevices.getUserMedia({
+                video: true,
+                audio: true
+            });
+            document.getElementById("localVideo").srcObject = localStream;
 
-        // Initialize peer connection
-        function createPeerConnection() {
-            peerConnection = new RTCPeerConnection(configuration);
+            // Tạo peer connection
+            peerConnection = new RTCPeerConnection();
 
+            // Thêm các track của local stream vào peer connection
+            localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
+
+            // Xử lý ICE candidates
             peerConnection.onicecandidate = (event) => {
                 if (event.candidate) {
-                    // Send ICE candidate to the server
                     socket.emit('candidate', event.candidate);
                 }
             };
 
-            peerConnection.oniceconnectionstatechange = async () => {
-                if (peerConnection.iceConnectionState === 'connected') {
-                    // Add all queued candidates after ICE connection is established
-                    for (let candidate of iceCandidates) {
-                        await peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
-                    }
-                    iceCandidates = [];
-                }
+            // Xử lý remote stream
+            peerConnection.ontrack = (event) => {
+                document.getElementById("remoteVideo").srcObject = event.streams[0];
             };
+
+            // Tạo SDP offer
+            const offer = await peerConnection.createOffer();
+            await peerConnection.setLocalDescription(offer);
+
+            // Gửi offer qua WebSocket
+            socket.emit('offer', offer);
         }
 
-        // Listen to the 'offer' event from the server
-        socket.on('offer', async (offer) => {
-            if (offer && offer.sdp) {
+        function initSocket() {
+            // Kết nối tới signaling server
+            socket = io(signalingServer);
+
+            // Nhận offer từ server
+            socket.on('offer', async (offer) => {
+                await peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
+                const answer = await peerConnection.createAnswer();
+                await peerConnection.setLocalDescription(answer);
+
+                // Gửi answer lại server
+                socket.emit('answer', answer);
+            });
+
+            // Nhận answer từ server
+            socket.on('answer', async (answer) => {
+                await peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
+            });
+
+            // Nhận ICE candidate từ server
+            socket.on('candidate', async (candidate) => {
                 try {
-                    await peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
-                    console.log("Remote description set successfully");
-
-                    const answer = await peerConnection.createAnswer();
-                    await peerConnection.setLocalDescription(answer);
-
-                    // Send answer back to the server
-                    socket.emit('answer', {
-                        type: 'answer',
-                        sdp: answer.sdp
-                    });
+                    await peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
                 } catch (e) {
-                    console.error('Error setting remote description:', e);
+                    console.error('Failed to add ICE candidate', e);
                 }
-            } else {
-                console.error('Invalid offer received:', offer);
-            }
-        });
+            });
+        }
 
-        // Listen to the 'candidate' event from the server
-        socket.on('candidate', async (candidate) => {
-            if (peerConnection.remoteDescription) {
-                await peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
-            } else {
-                iceCandidates.push(candidate); // Queue the candidate if remote description is not set yet
-            }
-        });
-
-        // Initialize WebSocket connection
-        const socket = io('https://pywebrtc.onrender.com'); // Replace with your Render app URL
-
-        // Handle connection to signaling server
-        socket.on('connect', () => {
-            console.log("Connected to signaling server");
-            createPeerConnection();
-        });
-
-        // Handle other messages from the server
-        socket.on('message', (message) => {
-            console.log(message);
-        });
+        window.onload = initSocket; // Khởi tạo WebSocket khi trang web được tải
     </script>
+</head>
+
+<body>
+    <h1>WebRTC Video Call</h1>
+    <div class="video-container">
+        <video id="localVideo" autoplay muted></video>
+        <video id="remoteVideo" autoplay></video>
+    </div>
+    <button onclick="startCall()">Start Call</button>
 </body>
 
 </html>
