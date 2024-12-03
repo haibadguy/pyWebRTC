@@ -5,63 +5,32 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Socket.IO WebRTC</title>
-    <link rel="stylesheet" href="style.css"> <!-- Kết nối file CSS -->
     <script src="https://cdn.socket.io/4.0.0/socket.io.min.js"></script> <!-- Kết nối Socket.IO -->
 </head>
 
 <body>
-    <div class="container">
-        <h1>Socket.IO WebRTC</h1>
+    <h1>WebRTC Socket.IO</h1>
 
-        <!-- Container cho video -->
-        <div class="video-container">
-            <video id="localVideo" autoplay muted></video>
-            <video id="remoteVideo" autoplay></video>
-        </div>
+    <!-- Video -->
+    <video id="localVideo" autoplay muted></video>
+    <video id="remoteVideo" autoplay></video>
 
-        <!-- Nút điều khiển -->
-        <div class="button-container">
-            <button id="startButton">Bắt đầu</button>
-            <button id="callButton">Gọi</button>
-            <button id="hangupButton">Kết thúc</button>
-        </div>
-
-        <div class="message-container">
-            <div class="message-box">
-                <input type="text" id="messageInput" placeholder="Nhập tin nhắn..." />
-                <button id="sendMessageButton">Gửi tin nhắn</button>
-            </div>
-            <div id="receivedMessages"></div>
-        </div>
-    </div>
+    <!-- Nút điều khiển -->
+    <button id="startCallButton">Start Call</button>
+    <button id="resetButton">Reset</button>
 
     <script>
-        // Khởi tạo kết nối Socket.IO với server
-        const socket = io('https://pywebrtc.onrender.com', {
-            transports: ['websocket'], // Sử dụng WebSocket nếu có thể
-        });
+        const socket = io('https://pywebrtc.onrender.com');
+        let localStream;
+        let peerConnection;
 
-        // Khởi tạo RTCPeerConnection
-        const peerConnection = new RTCPeerConnection();
-
-        // Lắng nghe sự kiện khi kết nối thành công
+        // Khi kết nối đến server
         socket.on('connect', () => {
-            console.log('Đã kết nối đến server!');
+            console.log('Connected to server');
         });
 
-        // Lắng nghe khi nhận tin nhắn từ server
-        socket.on('message', (data) => {
-            console.log('Tin nhắn từ server: ', data);
-            // Hiển thị tin nhắn từ server
-            const messageDiv = document.createElement('div');
-            messageDiv.textContent = 'Server: ' + JSON.stringify(data); // Chuyển đối tượng thành chuỗi
-            document.getElementById('receivedMessages').appendChild(messageDiv);
-        });
-
-        // Lắng nghe sự kiện "offer" từ server
+        // Lắng nghe offer từ server
         socket.on('offer', (data) => {
-            console.log('Received offer:', data);
-            // Xử lý offer và gửi lại answer
             peerConnection.setRemoteDescription(new RTCSessionDescription(data));
             peerConnection.createAnswer().then((answer) => {
                 return peerConnection.setLocalDescription(answer);
@@ -70,37 +39,41 @@
             });
         });
 
-        // Lắng nghe sự kiện "candidate" từ server
+        // Lắng nghe answer từ server
+        socket.on('answer', (data) => {
+            peerConnection.setRemoteDescription(new RTCSessionDescription(data));
+        });
+
+        // Lắng nghe ICE candidates
         socket.on('candidate', (candidate) => {
-            console.log('Received ICE candidate:', candidate);
             peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
         });
 
-        // Xử lý gửi tin nhắn từ client
-        document.getElementById('sendMessageButton').addEventListener('click', () => {
-            const messageInput = document.getElementById('messageInput');
-            const message = messageInput.value;
-            if (message) {
-                socket.send(message); // Gửi tin nhắn đến server
-                // Hiển thị tin nhắn trong UI
-                const messageDiv = document.createElement('div');
-                messageDiv.textContent = 'Client: ' + message;
-                document.getElementById('receivedMessages').appendChild(messageDiv);
-                messageInput.value = ''; // Xóa nội dung input sau khi gửi
-            }
-        });
-
-        // Gọi video
-        document.getElementById('callButton').addEventListener('click', () => {
+        // Tạo PeerConnection mới khi bắt đầu cuộc gọi
+        function startCall() {
             navigator.mediaDevices.getUserMedia({
                     video: true,
                     audio: true
                 })
                 .then((stream) => {
                     document.getElementById('localVideo').srcObject = stream;
-                    stream.getTracks().forEach(track => {
-                        peerConnection.addTrack(track, stream);
+                    localStream = stream;
+
+                    peerConnection = new RTCPeerConnection();
+                    localStream.getTracks().forEach(track => {
+                        peerConnection.addTrack(track, localStream);
                     });
+
+                    peerConnection.onicecandidate = (event) => {
+                        if (event.candidate) {
+                            socket.emit('candidate', event.candidate);
+                        }
+                    };
+
+                    peerConnection.ontrack = (event) => {
+                        document.getElementById('remoteVideo').srcObject = event.streams[0];
+                    };
+
                     peerConnection.createOffer().then((offer) => {
                         return peerConnection.setLocalDescription(offer);
                     }).then(() => {
@@ -108,22 +81,21 @@
                     });
                 })
                 .catch((error) => {
-                    console.error('Error accessing media devices.', error);
+                    console.error('Error accessing media devices:', error);
                 });
-        });
+        }
 
-        // Kết thúc cuộc gọi
-        document.getElementById('hangupButton').addEventListener('click', () => {
+        // Reset cuộc gọi
+        function resetCall() {
+            localStream.getTracks().forEach(track => track.stop());
             peerConnection.close();
             document.getElementById('localVideo').srcObject = null;
             document.getElementById('remoteVideo').srcObject = null;
-        });
+        }
 
-        // Lắng nghe sự kiện ontrack từ peerConnection
-        peerConnection.ontrack = (event) => {
-            const remoteStream = event.streams[0];
-            document.getElementById('remoteVideo').srcObject = remoteStream;
-        };
+        // Sự kiện khi nhấn nút
+        document.getElementById('startCallButton').addEventListener('click', startCall);
+        document.getElementById('resetButton').addEventListener('click', resetCall);
     </script>
 </body>
 
