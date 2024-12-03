@@ -7,69 +7,84 @@
     <title>WebRTC Video Call</title>
     <link rel="stylesheet" href="./style.css">
     <script src="https://cdn.socket.io/4.0.0/socket.io.min.js"></script>
-
     <script>
         let localStream, peerConnection, socket;
-        const signalingServer = "https://pywebrtc.onrender.com"; // URL của server signaling
+        const signalingServer = "https://pywebrtc.onrender.com"; // URL server signaling
 
         async function startCall() {
-            // Lấy video/audio từ thiết bị người dùng
+            // Lấy media từ camera và microphone
             localStream = await navigator.mediaDevices.getUserMedia({
                 video: true,
                 audio: true
             });
             document.getElementById("localVideo").srcObject = localStream;
 
-            // Tạo PeerConnection
+            // Tạo peer connection
             peerConnection = new RTCPeerConnection();
 
-            // Thêm các track của localStream vào peerConnection
+            // Thêm các track của local stream vào peer connection
             localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
 
-            // Lắng nghe sự kiện ICE candidate
+            // Xử lý ICE candidates
             peerConnection.onicecandidate = (event) => {
                 if (event.candidate) {
                     socket.emit('candidate', event.candidate);
                 }
             };
 
-            // Nhận luồng video/audio từ remote peer
+            // Xử lý remote stream
             peerConnection.ontrack = (event) => {
                 document.getElementById("remoteVideo").srcObject = event.streams[0];
             };
 
-            // Tạo offer
+            // Tạo SDP offer
             const offer = await peerConnection.createOffer();
             await peerConnection.setLocalDescription(offer);
 
-            // Gửi offer đến server
-            socket.emit('offer', peerConnection.localDescription);
+            // Gửi offer qua WebSocket
+            socket.emit('offer', offer);
         }
 
         function initSocket() {
-            // Kết nối đến server signaling
+            // Kết nối tới signaling server
             socket = io(signalingServer);
 
-            // Nhận "answer" từ server
-            socket.on('answer', async (answer) => {
+            // Nhận offer từ server
+            socket.on('offer', async (offer) => {
                 try {
-                    await peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
-                } catch (error) {
-                    console.error('Failed to set remote description:', error);
+                    await peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
+                    const answer = await peerConnection.createAnswer();
+                    await peerConnection.setLocalDescription(answer);
+                    socket.emit('answer', answer);
+                } catch (e) {
+                    console.error('Error setting remote description:', e);
                 }
             });
 
-            // Nhận "candidate" từ server
+            // Nhận answer từ server
+            socket.on('answer', async (answer) => {
+                try {
+                    await peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
+                } catch (e) {
+                    console.error('Error setting remote description:', e);
+                }
+            });
+
+            // Nhận ICE candidate từ server
             socket.on('candidate', async (candidate) => {
                 try {
-                    await peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
-                } catch (error) {
-                    console.error('Failed to add ICE candidate:', error);
+                    if (peerConnection.remoteDescription) {
+                        await peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
+                    } else {
+                        console.warn("Cannot add ICE candidate, remote description not set.");
+                    }
+                } catch (e) {
+                    console.error('Failed to add ICE candidate', e);
                 }
             });
         }
 
-        window.onload = initSocket; // Tự động kết nối khi tải trang
+        window.onload = initSocket; // Khởi tạo WebSocket khi trang web được tải
     </script>
 </head>
 
