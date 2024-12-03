@@ -17,10 +17,15 @@ def index():
 @socketio.on('offer')
 def handle_offer(data):
     print("Received offer:", data)
-    emit('answer', {
+
+    # Tạo SDP answer với thuộc tính setup cho video
+    answer = {
         'type': 'answer',
-        'sdp': data['sdp']  # Giả sử sử dụng chính SDP của client cho logic cơ bản
-    }, broadcast=True)
+        'sdp': 'v=0\r\no=blah 0 0 IN IP4 0.0.0.0\r\ns=blah\r\nm=video 9 UDP/TLS/RTP/SAVPF 96\r\nc=IN IP4 0.0.0.0\r\na=rtpmap:96 H264/90000\r\na=setup:actpass\r\n'  # Thêm setup:actpass vào SDP
+    }
+
+    # Gửi answer lại cho client
+    emit('answer', answer, broadcast=True)
 
 # Xử lý sự kiện "candidate" từ client
 @socketio.on('candidate')
