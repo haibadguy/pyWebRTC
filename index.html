@@ -5,8 +5,9 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>WebRTC Video Call</title>
-    <link rel="stylesheet" href="style.css"> <!-- Thêm liên kết đến CSS -->
-    <script src="https://cdn.socket.io/4.0.0/socket.io.min.js"></script> <!-- Thêm socket.io -->
+    <link rel="stylesheet" href="./style.css">
+    <script src="https://cdn.socket.io/4.0.0/socket.io.min.js"></script>
+
     <script>
         let localStream, peerConnection, socket;
         const signalingServer = "https://pywebrtc.onrender.com"; // URL server signaling
@@ -75,7 +76,6 @@
         }
 
         window.onload = initSocket; // Khởi tạo WebSocket khi trang web được tải
-
     </script>
 </head>
 
