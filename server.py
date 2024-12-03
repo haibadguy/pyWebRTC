@@ -40,6 +40,13 @@ def handle_disconnect():
     print("A client disconnected")
 
 if __name__ == '__main__':
-    port = int(os.environ.get('PORT', 5000))  # Lấy port từ biến môi trường, mặc định là 5000 nếu không có.
-    socketio.run(app, debug=False, host='0.0.0.0', port=port)
+    port = int(os.environ.get('PORT', 5000))
+    while True:
+        try:
+            socketio.run(app, debug=False, host='0.0.0.0', port=port)
+            break
+        except OSError:
+            print(f"Port {port} is in use. Trying another port...")
+            port += 1
+
 
