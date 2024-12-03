@@ -17,9 +17,13 @@ def serve_file(filename):
 @socketio.on('offer')
 def handle_offer(data):
     print("Received offer:", data)
+    emit('offer', data, broadcast=True)  # Gửi offer lại cho tất cả các client
 
-    # Gửi offer lại cho client (server chỉ chuyển tiếp offer, không cần tạo SDP thủ công)
-    emit('offer', data, broadcast=True)
+# Xử lý sự kiện "answer" từ client
+@socketio.on('answer')
+def handle_answer(data):
+    print("Received answer:", data)
+    emit('answer', data, broadcast=True)  # Gửi answer lại cho tất cả các client
 
 # Xử lý sự kiện "candidate" từ client
 @socketio.on('candidate')
@@ -39,5 +43,4 @@ def handle_disconnect():
     print("A client disconnected.")
 
 if __name__ == '__main__':
-    port = int(os.environ.get('PORT', 5000))
-    socketio.run(app, host='0.0.0.0', port=port, debug=True)
+    socketio.run(app, host='0.0.0.0', port=5000)
