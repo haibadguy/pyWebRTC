@@ -7,6 +7,7 @@
     <title>WebRTC Video Call</title>
     <link rel="stylesheet" href="./style.css">
     <script src="https://cdn.socket.io/4.0.0/socket.io.min.js"></script>
+
     <script>
         let localStream, peerConnection, socket;
         const signalingServer = "https://pywebrtc.onrender.com"; // URL server signaling
@@ -51,33 +52,23 @@
 
             // Nhận offer từ server
             socket.on('offer', async (offer) => {
-                try {
-                    await peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
-                    const answer = await peerConnection.createAnswer();
-                    await peerConnection.setLocalDescription(answer);
-                    socket.emit('answer', answer);
-                } catch (e) {
-                    console.error('Error setting remote description:', e);
-                }
+                await peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
+                const answer = await peerConnection.createAnswer();
+                await peerConnection.setLocalDescription(answer);
+
+                // Gửi answer lại server
+                socket.emit('answer', answer);
             });
 
             // Nhận answer từ server
             socket.on('answer', async (answer) => {
-                try {
-                    await peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
-                } catch (e) {
-                    console.error('Error setting remote description:', e);
-                }
+                await peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
             });
 
             // Nhận ICE candidate từ server
             socket.on('candidate', async (candidate) => {
                 try {
-                    if (peerConnection.remoteDescription) {
-                        await peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
-                    } else {
-                        console.warn("Cannot add ICE candidate, remote description not set.");
-                    }
+                    await peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
                 } catch (e) {
                     console.error('Failed to add ICE candidate', e);
                 }
