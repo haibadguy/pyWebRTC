@@ -36,6 +36,8 @@
             if (!peerConnection) {
                 startPeerConnection();
             }
+
+            // Chỉ gọi setRemoteDescription nếu peerConnection đang ở trạng thái non-stable
             peerConnection.setRemoteDescription(new RTCSessionDescription(data))
                 .then(() => {
                     return peerConnection.createAnswer();
@@ -54,6 +56,12 @@
         // Lắng nghe answer từ server
         socket.on('answer', (data) => {
             console.log("Received answer", data);
+            // Tránh việc gọi setRemoteDescription nếu đang ở trạng thái stable
+            if (peerConnection.signalingState === "stable") {
+                console.log("Ignoring the answer because the connection is in stable state.");
+                return;
+            }
+
             peerConnection.setRemoteDescription(new RTCSessionDescription(data))
                 .catch((error) => {
                     console.error('Error setting remote description:', error);
@@ -133,7 +141,6 @@
         document.getElementById('startCallButton').addEventListener('click', startCall);
         document.getElementById('resetButton').addEventListener('click', resetCall);
     </script>
-
 </body>
 
 </html>
