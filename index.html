@@ -1,91 +1,73 @@
 <!DOCTYPE html>
-<html lang="en">
-
+<html lang="vi">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>WebRTC Video Call</title>
-    <link rel="stylesheet" href="style.css">
-    <script src="https://cdn.socket.io/4.0.0/socket.io.min.js"></script>
+    <title>Socket.IO WebRTC</title>
+    <link rel="stylesheet" href="style.css"> <!-- Kết nối file CSS -->
+    <script src="https://cdn.socket.io/4.0.0/socket.io.min.js"></script> <!-- Kết nối Socket.IO -->
+</head>
+<body>
+    <div class="container">
+        <h1>Socket.IO WebRTC</h1>
+
+        <!-- Container cho video -->
+        <div class="video-container">
+            <video id="localVideo" autoplay muted></video>
+            <video id="remoteVideo" autoplay></video>
+        </div>
+
+        <!-- Nút điều khiển -->
+        <div class="button-container">
+            <button id="startButton">Bắt đầu</button>
+            <button id="callButton">Gọi</button>
+            <button id="hangupButton">Kết thúc</button>
+        </div>
+
+        <div class="message-container">
+            <div class="message-box">
+                <input type="text" id="messageInput" placeholder="Nhập tin nhắn..." />
+                <button id="sendMessageButton">Gửi tin nhắn</button>
+            </div>
+            <div id="receivedMessages"></div>
+        </div>
+    </div>
 
     <script>
-        let localStream, peerConnection, socket;
-        const signalingServer = "https://pywebrtc.onrender.com"; // URL server signaling
+        // Tạo kết nối Socket.IO đến server
+        const socket = io('https://pywebrtc.onrender.com', {
+            transports: ['websocket'], // Sử dụng WebSocket nếu có thể
+        });
 
-        async function startCall() {
-            // Lấy media từ camera và microphone
-            localStream = await navigator.mediaDevices.getUserMedia({
-                video: true,
-                audio: true
-            });
-            document.getElementById("localVideo").srcObject = localStream;
+        // Kiểm tra kết nối thành công
+        socket.on('connect', () => {
+            console.log('Đã kết nối đến server!');
+        });
 
-            // Tạo peer connection
-            peerConnection = new RTCPeerConnection();
+        // Lắng nghe sự kiện khi server gửi tin nhắn
+        socket.on('message', (data) => {
+            console.log('Tin nhắn từ server: ', data);
+            // Hiển thị tin nhắn từ server
+            const messageDiv = document.createElement('div');
+            messageDiv.textContent = 'Server: ' + data;
+            document.getElementById('receivedMessages').appendChild(messageDiv);
+        });
 
-            // Thêm các track của local stream vào peer connection
-            localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
-
-            // Xử lý ICE candidates
-            peerConnection.onicecandidate = (event) => {
-                if (event.candidate) {
-                    socket.emit('candidate', event.candidate);
-                }
-            };
-
-            // Xử lý remote stream
-            peerConnection.ontrack = (event) => {
-                document.getElementById("remoteVideo").srcObject = event.streams[0];
-            };
-
-            // Tạo SDP offer
-            const offer = await peerConnection.createOffer();
-            await peerConnection.setLocalDescription(offer);
-
-            // Gửi offer qua WebSocket
-            socket.emit('offer', offer);
-        }
-
-        function initSocket() {
-            // Kết nối tới signaling server
-            socket = io(signalingServer);
-
-            // Nhận offer từ server
-            socket.on('offer', async (offer) => {
-                await peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
-                const answer = await peerConnection.createAnswer();
-                await peerConnection.setLocalDescription(answer);
-
-                // Gửi answer lại server
-                socket.emit('answer', answer);
-            });
-
-            // Nhận answer từ server
-            socket.on('answer', async (answer) => {
-                await peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
-            });
-
-            // Nhận ICE candidate từ server
-            socket.on('candidate', async (candidate) => {
-                try {
-                    await peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
-                } catch (e) {
-                    console.error('Failed to add ICE candidate', e);
-                }
-            });
-        }
-
-        window.onload = initSocket; // Khởi tạo WebSocket khi trang web được tải
+        // Xử lý gửi tin nhắn từ client
+        document.getElementById('sendMessageButton').addEventListener('click', () => {
+            const messageInput = document.getElementById('messageInput');
+            const message = messageInput.value;
+            if (message) {
+                // Gửi tin nhắn đến server
+                socket.send(message);
+                // Hiển thị tin nhắn trong UI
+                const messageDiv = document.createElement('div');
+                messageDiv.textContent = 'Client: ' + message;
+                document.getElementById('receivedMessages').appendChild(messageDiv);
+                // Xóa nội dung input sau khi gửi
+                messageInput.value = '';
+            }
+        });
     </script>
-</head>
-
-<body>
-    <h1>WebRTC Video Call</h1>
-    <div class="video-container">
-        <video id="localVideo" autoplay muted></video>
-        <video id="remoteVideo" autoplay></video>
-    </div>
-    <button onclick="startCall()">Start Call</button>
 </body>
-
-</html> 
+</html>
