@@ -10,72 +10,66 @@
 
     <script>
         let localStream, peerConnection, socket;
-        const signalingServer = "https://pywebrtc.onrender.com"; // URL server signaling
+        const signalingServer = "https://pywebrtc.onrender.com"; // URL của server signaling
 
         async function startCall() {
-            // Lấy media từ camera và microphone
+            // Lấy video/audio từ thiết bị người dùng
             localStream = await navigator.mediaDevices.getUserMedia({
                 video: true,
                 audio: true
             });
             document.getElementById("localVideo").srcObject = localStream;
 
-            // Tạo peer connection
+            // Tạo PeerConnection
             peerConnection = new RTCPeerConnection();
 
-            // Thêm các track của local stream vào peer connection
+            // Thêm các track của localStream vào peerConnection
             localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
 
-            // Xử lý ICE candidates
+            // Lắng nghe sự kiện ICE candidate
             peerConnection.onicecandidate = (event) => {
                 if (event.candidate) {
                     socket.emit('candidate', event.candidate);
                 }
             };
 
-            // Xử lý remote stream
+            // Nhận luồng video/audio từ remote peer
             peerConnection.ontrack = (event) => {
                 document.getElementById("remoteVideo").srcObject = event.streams[0];
             };
 
-            // Tạo SDP offer
+            // Tạo offer
             const offer = await peerConnection.createOffer();
             await peerConnection.setLocalDescription(offer);
 
-            // Gửi offer qua WebSocket
-            socket.emit('offer', offer);
+            // Gửi offer đến server
+            socket.emit('offer', peerConnection.localDescription);
         }
 
         function initSocket() {
-            // Kết nối tới signaling server
+            // Kết nối đến server signaling
             socket = io(signalingServer);
 
-            // Nhận offer từ server
-            socket.on('offer', async (offer) => {
-                await peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
-                const answer = await peerConnection.createAnswer();
-                await peerConnection.setLocalDescription(answer);
-
-                // Gửi answer lại server
-                socket.emit('answer', answer);
-            });
-
-            // Nhận answer từ server
+            // Nhận "answer" từ server
             socket.on('answer', async (answer) => {
-                await peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
+                try {
+                    await peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
+                } catch (error) {
+                    console.error('Failed to set remote description:', error);
+                }
             });
 
-            // Nhận ICE candidate từ server
+            // Nhận "candidate" từ server
             socket.on('candidate', async (candidate) => {
                 try {
                     await peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
-                } catch (e) {
-                    console.error('Failed to add ICE candidate', e);
+                } catch (error) {
+                    console.error('Failed to add ICE candidate:', error);
                 }
             });
         }
 
-        window.onload = initSocket; // Khởi tạo WebSocket khi trang web được tải
+        window.onload = initSocket; // Tự động kết nối khi tải trang
     </script>
 </head>
 
