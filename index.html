@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -7,33 +8,35 @@
     <script src="https://cdn.socket.io/4.0.1/socket.io.min.js"></script>
     <script src="https://webrtc.github.io/adapter/adapter-latest.js"></script>
 </head>
+
 <body>
     <h1>WebRTC Signaling Server</h1>
     <script>
-        // Cấu hình peer connection
+        // Configuration for peer connection
         const configuration = {
-            iceServers: [
-                { urls: 'stun:stun.l.google.com:19302' }  // STUN server của Google
+            iceServers: [{
+                    urls: 'stun:stun.l.google.com:19302'
+                } // Google STUN server
             ]
         };
 
         let peerConnection;
         let iceCandidates = [];
 
-        // Khởi tạo peerConnection
+        // Initialize peer connection
         function createPeerConnection() {
             peerConnection = new RTCPeerConnection(configuration);
 
             peerConnection.onicecandidate = (event) => {
                 if (event.candidate) {
-                    // Gửi ICE candidate tới server khi tìm thấy
+                    // Send ICE candidate to the server
                     socket.emit('candidate', event.candidate);
                 }
             };
 
             peerConnection.oniceconnectionstatechange = async () => {
                 if (peerConnection.iceConnectionState === 'connected') {
-                    // Nếu đã kết nối ICE, thêm tất cả candidate đã queue lại
+                    // Add all queued candidates after ICE connection is established
                     for (let candidate of iceCandidates) {
                         await peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
                     }
@@ -42,7 +45,7 @@
             };
         }
 
-        // Lắng nghe sự kiện "offer" từ server
+        // Listen to the 'offer' event from the server
         socket.on('offer', async (offer) => {
             if (offer && offer.sdp) {
                 try {
@@ -52,7 +55,7 @@
                     const answer = await peerConnection.createAnswer();
                     await peerConnection.setLocalDescription(answer);
 
-                    // Gửi answer lại server
+                    // Send answer back to the server
                     socket.emit('answer', {
                         type: 'answer',
                         sdp: answer.sdp
@@ -65,28 +68,29 @@
             }
         });
 
-        // Lắng nghe sự kiện "candidate" từ server
+        // Listen to the 'candidate' event from the server
         socket.on('candidate', async (candidate) => {
             if (peerConnection.remoteDescription) {
                 await peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
             } else {
-                iceCandidates.push(candidate);  // Nếu chưa có remote description, thêm candidate vào queue
+                iceCandidates.push(candidate); // Queue the candidate if remote description is not set yet
             }
         });
 
-        // Khởi tạo kết nối WebSocket
-        const socket = io('https://your-server-url');  // Thay bằng URL của server Flask của bạn
+        // Initialize WebSocket connection
+        const socket = io('https://pywebrtc.onrender.com'); // Replace with your Render app URL
 
-        // Lắng nghe sự kiện kết nối
+        // Handle connection to signaling server
         socket.on('connect', () => {
             console.log("Connected to signaling server");
             createPeerConnection();
         });
 
-        // Lắng nghe các tin nhắn khác từ server
+        // Handle other messages from the server
         socket.on('message', (message) => {
             console.log(message);
         });
     </script>
 </body>
+
 </html>
