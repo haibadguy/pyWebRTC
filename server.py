@@ -4,44 +4,46 @@ from flask_socketio import SocketIO, emit
 import os
 
 app = Flask(__name__)
+CORS(app, resources={r"/*": {"origins": ["https://haibadguy.github.io", "https://haibadguy.github.io/pyWebRTC"]}})
 
-# CORS configuration - Adjust for Render URL
-CORS(app, resources={r"/*": {"origins": ["https://pywebrtc.onrender.com"]}})
-
-# SocketIO configuration
-socketio = SocketIO(app, async_mode='eventlet', cors_allowed_origins=["https://pywebrtc.onrender.com"])
+# Cấu hình SocketIO
+socketio = SocketIO(app, async_mode='eventlet', cors_allowed_origins=["https://haibadguy.github.io", "https://haibadguy.github.io/pyWebRTC"])
 
 @app.route('/')
 def index():
     return "WebRTC Signaling Server is running."
 
-# Handling 'offer' event from client
+# Xử lý sự kiện "offer" từ client
 @socketio.on('offer')
 def handle_offer(data):
     print("Received offer:", data)
-    emit('answer', {
-        'type': 'answer',
-        'sdp': data['sdp']  # Assuming the client sends its SDP as a basic logic
-    }, broadcast=True)
 
-# Handling 'candidate' event from client
+    # Tạo SDP answer với thời gian 't=' hợp lệ
+    answer = {
+        'type': 'answer',
+        'sdp': 'v=0\r\no=blah 0 0 IN IP4 0.0.0.0\r\ns=blah\r\nm=video 9 UDP/TLS/RTP/SAVPF 96\r\nc=IN IP4 0.0.0.0\r\nt=0 0\r\na=rtpmap:96 H264/90000\r\na=setup:actpass\r\n'  # Đảm bảo 't=0 0' có mặt
+    }
+
+    # Gửi answer lại cho client
+    emit('answer', answer, broadcast=True)
+
+# Xử lý sự kiện "candidate" từ client
 @socketio.on('candidate')
 def handle_candidate(candidate):
     print("Received ICE candidate:", candidate)
     emit('candidate', candidate, broadcast=True)
 
-# When client connects
+# Khi client kết nối
 @socketio.on('connect')
 def handle_connect():
     print("A client connected.")
     emit('message', {'data': 'Welcome to the WebRTC signaling server!'})
 
-# When client disconnects
+# Khi client ngắt kết nối
 @socketio.on('disconnect')
 def handle_disconnect():
     print("A client disconnected.")
 
 if __name__ == '__main__':
-    # Render automatically sets the port environment variable to PORT
-    port = int(os.environ.get('PORT', 5000))  # Default to 5000 if no PORT is set
+    port = int(os.environ.get('PORT', 5000))
     socketio.run(app, host='0.0.0.0', port=port, debug=False)
