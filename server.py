@@ -1,17 +1,17 @@
-from flask import Flask
-from flask_cors import CORS
+from flask import Flask, send_from_directory
 from flask_socketio import SocketIO, emit
 import os
 
 app = Flask(__name__)
-CORS(app, resources={r"/*": {"origins": ["https://haibadguy.github.io", "https://haibadguy.github.io/pyWebRTC"]}})
-
-# Cấu hình SocketIO
-socketio = SocketIO(app, async_mode='eventlet', cors_allowed_origins=["https://haibadguy.github.io", "https://haibadguy.github.io/pyWebRTC"])
+socketio = SocketIO(app, cors_allowed_origins=["https://haibadguy.github.io"])
 
 @app.route('/')
 def index():
-    return "WebRTC Signaling Server is running."
+    return send_from_directory(os.getcwd(), 'index.html')
+
+@app.route('/<path:filename>')
+def serve_file(filename):
+    return send_from_directory(os.getcwd(), filename)
 
 # Xử lý sự kiện "offer" từ client
 @socketio.on('offer')
@@ -46,4 +46,4 @@ def handle_disconnect():
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
-    socketio.run(app, host='0.0.0.0', port=port, debug=False)
+    socketio.run(app, host='0.0.0.0', port=port, debug=True)
