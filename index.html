@@ -1,146 +1,85 @@
 <!DOCTYPE html>
-<html lang="vi">
-
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Socket.IO WebRTC</title>
-    <script src="https://cdn.socket.io/4.0.0/socket.io.min.js"></script> <!-- Kết nối Socket.IO -->
+    <title>WebRTC Example</title>
 </head>
-
 <body>
-    <h1>WebRTC Socket.IO</h1>
+    <h1>WebRTC Connection Example</h1>
 
-    <!-- Video -->
+    <button id="startButton">Start Connection</button>
     <video id="localVideo" autoplay muted></video>
     <video id="remoteVideo" autoplay></video>
 
-    <!-- Nút điều khiển -->
-    <button id="startCallButton">Start Call</button>
-    <button id="resetButton">Reset</button>
-
     <script>
-        const socket = io('https://pywebrtc.onrender.com'); // Kết nối với server
         let localStream;
+        let remoteStream;
         let peerConnection;
-        let isCaller = false;
 
-        // Khi kết nối đến server
-        socket.on('connect', () => {
-            console.log('Connected to server');
+        // Google STUN servers
+        const iceServers = [
+            { urls: "stun:stun.l.google.com:19302" },
+            { urls: "turn:your.turn.server.com:3478", username: "your_username", credential: "your_credential" }, // TURN server (example)
+            { urls: "stun:stun1.l.google.com:19302" }
+        ];
+
+        const config = {
+            iceServers: iceServers
+        };
+
+        // Select HTML elements
+        const startButton = document.getElementById('startButton');
+        const localVideo = document.getElementById('localVideo');
+        const remoteVideo = document.getElementById('remoteVideo');
+
+        // Start the connection
+        startButton.addEventListener('click', () => {
+            startConnection();
         });
 
-        // Lắng nghe offer từ server
-        socket.on('offer', (data) => {
-            console.log("Received offer", data);
-            if (!peerConnection) {
-                startPeerConnection();
+        // Function to start the WebRTC connection
+        async function startConnection() {
+            try {
+                // Get local media stream
+                localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+                localVideo.srcObject = localStream;
+
+                // Create peer connection
+                peerConnection = new RTCPeerConnection(config);
+
+                // Add local stream tracks to the peer connection
+                localStream.getTracks().forEach(track => {
+                    peerConnection.addTrack(track, localStream);
+                });
+
+                // Handle ICE candidates
+                peerConnection.onicecandidate = function(event) {
+                    if (event.candidate) {
+                        console.log("New ICE Candidate: ", event.candidate);
+                        // Send candidate to remote peer via signaling (here it's just logged)
+                    }
+                };
+
+                // When remote stream is added
+                peerConnection.ontrack = function(event) {
+                    console.log("Remote stream added");
+                    remoteStream = event.streams[0];
+                    remoteVideo.srcObject = remoteStream;
+                };
+
+                // Create an offer
+                const offer = await peerConnection.createOffer();
+                await peerConnection.setLocalDescription(offer);
+
+                // Send the offer to the remote peer (signaling should be done here)
+                console.log("Offer created and set as local description", offer);
+                // In a real scenario, you would send this offer to the remote peer via signaling server.
+
+            } catch (err) {
+                console.error("Error starting connection: ", err);
             }
-
-            // Chỉ gọi setRemoteDescription nếu peerConnection đang ở trạng thái non-stable
-            peerConnection.setRemoteDescription(new RTCSessionDescription(data))
-                .then(() => {
-                    return peerConnection.createAnswer();
-                })
-                .then((answer) => {
-                    return peerConnection.setLocalDescription(answer);
-                })
-                .then(() => {
-                    socket.emit('answer', peerConnection.localDescription);
-                })
-                .catch((error) => {
-                    console.error('Error handling offer:', error);
-                });
-        });
-
-        // Lắng nghe answer từ server
-        socket.on('answer', (data) => {
-            console.log("Received answer", data);
-            // Tránh việc gọi setRemoteDescription nếu đang ở trạng thái stable
-            if (peerConnection.signalingState === "stable") {
-                console.log("Ignoring the answer because the connection is in stable state.");
-                return;
-            }
-
-            peerConnection.setRemoteDescription(new RTCSessionDescription(data))
-                .catch((error) => {
-                    console.error('Error setting remote description:', error);
-                });
-        });
-
-        // Lắng nghe ICE candidates
-        socket.on('candidate', (candidate) => {
-            console.log("Received ICE candidate", candidate);
-            peerConnection.addIceCandidate(new RTCIceCandidate(candidate))
-                .catch((error) => {
-                    console.error('Error adding ICE candidate:', error);
-                });
-        });
-
-        // Tạo PeerConnection mới khi bắt đầu cuộc gọi
-        function startCall() {
-            navigator.mediaDevices.getUserMedia({
-                    video: true,
-                    audio: true
-                })
-                .then((stream) => {
-                    document.getElementById('localVideo').srcObject = stream;
-                    localStream = stream;
-                    startPeerConnection();
-                    peerConnection.addTrack(localStream.getTracks()[0], localStream);
-                    peerConnection.addTrack(localStream.getTracks()[1], localStream);
-
-                    peerConnection.createOffer()
-                        .then((offer) => {
-                            return peerConnection.setLocalDescription(offer);
-                        })
-                        .then(() => {
-                            socket.emit('offer', peerConnection.localDescription);
-                        })
-                        .catch((error) => {
-                            console.error('Error creating offer:', error);
-                        });
-                })
-                .catch((error) => {
-                    console.error('Error accessing media devices:', error);
-                });
         }
-
-        // Tạo PeerConnection và thiết lập các sự kiện
-        function startPeerConnection() {
-            if (peerConnection) return; // Tránh tạo nhiều PeerConnection
-            peerConnection = new RTCPeerConnection();
-
-            peerConnection.onicecandidate = (event) => {
-                if (event.candidate) {
-                    socket.emit('candidate', event.candidate);
-                }
-            };
-
-            peerConnection.ontrack = (event) => {
-                document.getElementById('remoteVideo').srcObject = event.streams[0];
-            };
-        }
-
-        // Reset cuộc gọi
-        function resetCall() {
-            if (peerConnection) {
-                peerConnection.close();
-                peerConnection = null;
-            }
-
-            if (localStream) {
-                localStream.getTracks().forEach(track => track.stop());
-            }
-
-            document.getElementById('localVideo').srcObject = null;
-            document.getElementById('remoteVideo').srcObject = null;
-        }
-
-        // Sự kiện khi nhấn nút
-        document.getElementById('startCallButton').addEventListener('click', startCall);
-        document.getElementById('resetButton').addEventListener('click', resetCall);
     </script>
 </body>
-
 </html>
