@@ -5,8 +5,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Socket.IO WebRTC</title>
-    <link rel="stylesheet" href="style.css"> <!-- Kết nối file CSS -->
-    <script src="https://cdn.socket.io/4.0.0/socket.io.min.js"></script> <!-- Kết nối Socket.IO -->
+    <link rel="stylesheet" href="style.css">
+    <script src="https://cdn.socket.io/4.0.0/socket.io.min.js"></script>
 </head>
 
 <body>
@@ -19,147 +19,97 @@
             <video id="remoteVideo" autoplay></video>
         </div>
 
-        <!-- Nút điều khiển -->
+        <!-- Các nút điều khiển -->
         <div class="button-container">
-            <button id="startButton">Bắt đầu</button>
-            <button id="callButton">Gọi</button>
-            <button id="hangupButton">Kết thúc</button>
-        </div>
-
-        <div class="message-container">
-            <div class="message-box">
-                <input type="text" id="messageInput" placeholder="Nhập tin nhắn..." />
-                <button id="sendMessageButton">Gửi tin nhắn</button>
-            </div>
-            <div id="receivedMessages"></div>
+            <button id="startCallButton">Bắt đầu cuộc gọi</button>
+            <button id="resetButton">Đặt lại</button>
         </div>
     </div>
 
     <script>
-        // Tạo kết nối WebRTC Peer
-        let localStream;
-        let remoteStream;
-        let peerConnection;
-        const configuration = {
-            iceServers: [{
-                urls: 'stun:stun.l.google.com:19302' // Google STUN server
-            }]
-        };
-
-        // Kết nối WebRTC và gửi offer, nhận answer và candidates
         const socket = io('https://pywebrtc.onrender.com', {
             transports: ['websocket']
         });
 
+        // Kiểm tra kết nối
         socket.on('connect', () => {
             console.log('Đã kết nối đến server!');
         });
 
-        // Khởi tạo stream và video local
-        async function startVideo() {
-            try {
-                localStream = await navigator.mediaDevices.getUserMedia({
-                    video: true,
-                    audio: true
-                });
-                document.getElementById('localVideo').srcObject = localStream;
-            } catch (err) {
-                console.error('Không thể lấy video hoặc âm thanh', err);
-            }
+        // Lắng nghe sự kiện khi server gửi tin nhắn
+        socket.on('message', (data) => {
+            console.log('Tin nhắn từ server:', data);
+        });
+
+        let localStream;
+        let peerConnection;
+
+        // Lấy video từ camera local
+        async function getLocalStream() {
+            const stream = await navigator.mediaDevices.getUserMedia({
+                video: true,
+                audio: true
+            });
+            document.getElementById('localVideo').srcObject = stream;
+            return stream;
         }
 
-        // Tạo peer connection và gửi offer
-        document.getElementById('startButton').addEventListener('click', async () => {
-            await startVideo();
+        // Xử lý nút bắt đầu cuộc gọi
+        document.getElementById('startCallButton').addEventListener('click', async () => {
+            localStream = await getLocalStream();
+            peerConnection = new RTCPeerConnection();
 
-            peerConnection = new RTCPeerConnection(configuration);
-
-            // Gửi stream local đến peer connection
+            // Thêm stream của local vào peerConnection
             localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
 
-            peerConnection.onicecandidate = function (event) {
-                if (event.candidate) {
-                    socket.emit('candidate', event.candidate);
-                }
-            };
-
-            peerConnection.ontrack = function (event) {
-                remoteStream = event.streams[0];
-                document.getElementById('remoteVideo').srcObject = remoteStream;
-            };
-
-            // Tạo offer và gửi đến server
+            // Thiết lập kết nối WebRTC
             const offer = await peerConnection.createOffer();
             await peerConnection.setLocalDescription(offer);
+
+            // Gửi offer đến server
             socket.emit('offer', offer);
         });
 
-        // Nhận offer từ server và trả lời với answer
+        // Lắng nghe và xử lý offer từ server
         socket.on('offer', async (offer) => {
-            if (!peerConnection) {
-                await startVideo();
-                peerConnection = new RTCPeerConnection(configuration);
-
-                localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
-
-                peerConnection.onicecandidate = function (event) {
-                    if (event.candidate) {
-                        socket.emit('candidate', event.candidate);
-                    }
-                };
-
-                peerConnection.ontrack = function (event) {
-                    remoteStream = event.streams[0];
-                    document.getElementById('remoteVideo').srcObject = remoteStream;
-                };
-            }
-
             await peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
 
-            // Tạo answer và gửi về server
+            // Tạo answer và gửi lại server
             const answer = await peerConnection.createAnswer();
             await peerConnection.setLocalDescription(answer);
             socket.emit('answer', answer);
         });
 
-        // Nhận ICE candidate từ server
+        // Lắng nghe và xử lý ICE candidates
         socket.on('candidate', (candidate) => {
+            peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
+        });
+
+        // Xử lý reset cuộc gọi
+        document.getElementById('resetButton').addEventListener('click', () => {
             if (peerConnection) {
-                peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
+                peerConnection.close();
             }
+            if (localStream) {
+                localStream.getTracks().forEach(track => track.stop());
+            }
+            document.getElementById('localVideo').srcObject = null;
+            document.getElementById('remoteVideo').srcObject = null;
+            peerConnection = null;
+            localStream = null;
         });
 
-        // Nhận answer từ server
-        socket.on('answer', (answer) => {
-            if (peerConnection) {
-                peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
-            }
-        });
+        // Lắng nghe sự kiện khi kết nối WebRTC được thiết lập và stream từ remote
+        peerConnection.ontrack = (event) => {
+            document.getElementById('remoteVideo').srcObject = event.streams[0];
+        };
 
-        // Xử lý gửi tin nhắn từ client
-        document.getElementById('sendMessageButton').addEventListener('click', () => {
-            const messageInput = document.getElementById('messageInput');
-            const message = messageInput.value;
-            if (message) {
-                // Gửi tin nhắn đến server
-                socket.send(message);
-                // Hiển thị tin nhắn trong UI
-                const messageDiv = document.createElement('div');
-                messageDiv.textContent = 'Client: ' + message;
-                document.getElementById('receivedMessages').appendChild(messageDiv);
-                // Xóa nội dung input sau khi gửi
-                messageInput.value = '';
+        // Lắng nghe sự kiện ICE candidates
+        peerConnection.onicecandidate = (event) => {
+            if (event.candidate) {
+                socket.emit('candidate', event.candidate);
             }
-        });
-
-        // Lắng nghe sự kiện khi server gửi tin nhắn
-        socket.on('message', (data) => {
-            console.log('Tin nhắn từ server: ', data);
-            // Hiển thị tin nhắn từ server
-            const messageDiv = document.createElement('div');
-            messageDiv.textContent = 'Server: ' + data;
-            document.getElementById('receivedMessages').appendChild(messageDiv);
-        });
+        };
     </script>
 </body>
 
