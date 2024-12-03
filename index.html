@@ -23,6 +23,7 @@
         const socket = io('https://pywebrtc.onrender.com');
         let localStream;
         let peerConnection;
+        let isCaller = false;
 
         // Khi kết nối đến server
         socket.on('connect', () => {
@@ -31,22 +32,41 @@
 
         // Lắng nghe offer từ server
         socket.on('offer', (data) => {
-            peerConnection.setRemoteDescription(new RTCSessionDescription(data));
-            peerConnection.createAnswer().then((answer) => {
-                return peerConnection.setLocalDescription(answer);
-            }).then(() => {
-                socket.emit('answer', peerConnection.localDescription);
-            });
+            console.log("Received offer", data);
+            if (!peerConnection) {
+                startPeerConnection();
+            }
+            peerConnection.setRemoteDescription(new RTCSessionDescription(data))
+                .then(() => {
+                    return peerConnection.createAnswer();
+                })
+                .then((answer) => {
+                    return peerConnection.setLocalDescription(answer);
+                })
+                .then(() => {
+                    socket.emit('answer', peerConnection.localDescription);
+                })
+                .catch((error) => {
+                    console.error('Error handling offer:', error);
+                });
         });
 
         // Lắng nghe answer từ server
         socket.on('answer', (data) => {
-            peerConnection.setRemoteDescription(new RTCSessionDescription(data));
+            console.log("Received answer", data);
+            peerConnection.setRemoteDescription(new RTCSessionDescription(data))
+                .catch((error) => {
+                    console.error('Error setting remote description:', error);
+                });
         });
 
         // Lắng nghe ICE candidates
         socket.on('candidate', (candidate) => {
-            peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
+            console.log("Received ICE candidate", candidate);
+            peerConnection.addIceCandidate(new RTCIceCandidate(candidate))
+                .catch((error) => {
+                    console.error('Error adding ICE candidate:', error);
+                });
         });
 
         // Tạo PeerConnection mới khi bắt đầu cuộc gọi
@@ -58,37 +78,53 @@
                 .then((stream) => {
                     document.getElementById('localVideo').srcObject = stream;
                     localStream = stream;
+                    startPeerConnection();
+                    peerConnection.addTrack(localStream.getTracks()[0], localStream);
+                    peerConnection.addTrack(localStream.getTracks()[1], localStream);
 
-                    peerConnection = new RTCPeerConnection();
-                    localStream.getTracks().forEach(track => {
-                        peerConnection.addTrack(track, localStream);
-                    });
-
-                    peerConnection.onicecandidate = (event) => {
-                        if (event.candidate) {
-                            socket.emit('candidate', event.candidate);
-                        }
-                    };
-
-                    peerConnection.ontrack = (event) => {
-                        document.getElementById('remoteVideo').srcObject = event.streams[0];
-                    };
-
-                    peerConnection.createOffer().then((offer) => {
-                        return peerConnection.setLocalDescription(offer);
-                    }).then(() => {
-                        socket.emit('offer', peerConnection.localDescription);
-                    });
+                    peerConnection.createOffer()
+                        .then((offer) => {
+                            return peerConnection.setLocalDescription(offer);
+                        })
+                        .then(() => {
+                            socket.emit('offer', peerConnection.localDescription);
+                        })
+                        .catch((error) => {
+                            console.error('Error creating offer:', error);
+                        });
                 })
                 .catch((error) => {
                     console.error('Error accessing media devices:', error);
                 });
         }
 
+        // Tạo PeerConnection và thiết lập các sự kiện
+        function startPeerConnection() {
+            if (peerConnection) return; // Tránh tạo nhiều PeerConnection
+            peerConnection = new RTCPeerConnection();
+
+            peerConnection.onicecandidate = (event) => {
+                if (event.candidate) {
+                    socket.emit('candidate', event.candidate);
+                }
+            };
+
+            peerConnection.ontrack = (event) => {
+                document.getElementById('remoteVideo').srcObject = event.streams[0];
+            };
+        }
+
         // Reset cuộc gọi
         function resetCall() {
-            localStream.getTracks().forEach(track => track.stop());
-            peerConnection.close();
+            if (peerConnection) {
+                peerConnection.close();
+                peerConnection = null;
+            }
+
+            if (localStream) {
+                localStream.getTracks().forEach(track => track.stop());
+            }
+
             document.getElementById('localVideo').srcObject = null;
             document.getElementById('remoteVideo').srcObject = null;
         }
@@ -97,6 +133,7 @@
         document.getElementById('startCallButton').addEventListener('click', startCall);
         document.getElementById('resetButton').addEventListener('click', resetCall);
     </script>
+
 </body>
 
 </html>
