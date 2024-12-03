@@ -4,41 +4,44 @@ from flask_socketio import SocketIO, emit
 import os
 
 app = Flask(__name__)
-CORS(app, resources={r"/*": {"origins": ["https://haibadguy.github.io", "https://haibadguy.github.io/pyWebRTC"]}})
 
-# Cấu hình SocketIO
-socketio = SocketIO(app, async_mode='eventlet', cors_allowed_origins=["https://haibadguy.github.io", "https://haibadguy.github.io/pyWebRTC"])
+# CORS configuration - Adjust for Render URL
+CORS(app, resources={r"/*": {"origins": ["https://pywebrtc.onrender.com"]}})
+
+# SocketIO configuration
+socketio = SocketIO(app, async_mode='eventlet', cors_allowed_origins=["https://pywebrtc.onrender.com"])
 
 @app.route('/')
 def index():
     return "WebRTC Signaling Server is running."
 
-# Xử lý sự kiện "offer" từ client
+# Handling 'offer' event from client
 @socketio.on('offer')
 def handle_offer(data):
     print("Received offer:", data)
     emit('answer', {
         'type': 'answer',
-        'sdp': data['sdp']  # Giả sử sử dụng chính SDP của client cho logic cơ bản
+        'sdp': data['sdp']  # Assuming the client sends its SDP as a basic logic
     }, broadcast=True)
 
-# Xử lý sự kiện "candidate" từ client
+# Handling 'candidate' event from client
 @socketio.on('candidate')
 def handle_candidate(candidate):
     print("Received ICE candidate:", candidate)
     emit('candidate', candidate, broadcast=True)
 
-# Khi client kết nối
+# When client connects
 @socketio.on('connect')
 def handle_connect():
     print("A client connected.")
     emit('message', {'data': 'Welcome to the WebRTC signaling server!'})
 
-# Khi client ngắt kết nối
+# When client disconnects
 @socketio.on('disconnect')
 def handle_disconnect():
     print("A client disconnected.")
 
 if __name__ == '__main__':
-    port = int(os.environ.get('PORT', 5000))
+    # Render automatically sets the port environment variable to PORT
+    port = int(os.environ.get('PORT', 5000))  # Default to 5000 if no PORT is set
     socketio.run(app, host='0.0.0.0', port=port, debug=False)
