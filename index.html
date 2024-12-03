@@ -51,10 +51,14 @@
         // Lắng nghe answer từ server
         socket.on('answer', (data) => {
             console.log("Received answer", data);
-            peerConnection.setRemoteDescription(new RTCSessionDescription(data))
-                .catch((error) => {
-                    console.error('Error setting remote description:', error);
-                });
+            if (peerConnection.signalingState !== "stable") {
+                peerConnection.setRemoteDescription(new RTCSessionDescription(data))
+                    .catch((error) => {
+                        console.error('Error setting remote description:', error);
+                    });
+            } else {
+                console.log("Ignoring the answer because the connection is in stable state.");
+            }
         });
 
         // Lắng nghe ICE candidates
@@ -78,14 +82,16 @@
                     startPeerConnection();
                     localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
 
-                    peerConnection.createOffer()
-                        .then((offer) => peerConnection.setLocalDescription(offer))
-                        .then(() => {
-                            socket.emit('offer', peerConnection.localDescription);
-                        })
-                        .catch((error) => {
-                            console.error('Error creating offer:', error);
-                        });
+                    if (peerConnection.signalingState === "stable") {
+                        peerConnection.createOffer()
+                            .then((offer) => peerConnection.setLocalDescription(offer))
+                            .then(() => {
+                                socket.emit('offer', peerConnection.localDescription);
+                            })
+                            .catch((error) => {
+                                console.error('Error creating offer:', error);
+                            });
+                    }
                 })
                 .catch((error) => {
                     console.error('Error accessing media devices:', error);
