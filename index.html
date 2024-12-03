@@ -37,14 +37,9 @@
                 startPeerConnection();
             }
 
-            // Chỉ gọi setRemoteDescription nếu peerConnection đang ở trạng thái non-stable
             peerConnection.setRemoteDescription(new RTCSessionDescription(data))
-                .then(() => {
-                    return peerConnection.createAnswer();
-                })
-                .then((answer) => {
-                    return peerConnection.setLocalDescription(answer);
-                })
+                .then(() => peerConnection.createAnswer())
+                .then((answer) => peerConnection.setLocalDescription(answer))
                 .then(() => {
                     socket.emit('answer', peerConnection.localDescription);
                 })
@@ -56,12 +51,6 @@
         // Lắng nghe answer từ server
         socket.on('answer', (data) => {
             console.log("Received answer", data);
-            // Tránh việc gọi setRemoteDescription nếu đang ở trạng thái stable
-            if (peerConnection.signalingState === "stable") {
-                console.log("Ignoring the answer because the connection is in stable state.");
-                return;
-            }
-
             peerConnection.setRemoteDescription(new RTCSessionDescription(data))
                 .catch((error) => {
                     console.error('Error setting remote description:', error);
@@ -87,13 +76,10 @@
                     document.getElementById('localVideo').srcObject = stream;
                     localStream = stream;
                     startPeerConnection();
-                    peerConnection.addTrack(localStream.getTracks()[0], localStream);
-                    peerConnection.addTrack(localStream.getTracks()[1], localStream);
+                    localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
 
                     peerConnection.createOffer()
-                        .then((offer) => {
-                            return peerConnection.setLocalDescription(offer);
-                        })
+                        .then((offer) => peerConnection.setLocalDescription(offer))
                         .then(() => {
                             socket.emit('offer', peerConnection.localDescription);
                         })
