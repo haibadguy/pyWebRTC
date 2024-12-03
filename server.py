@@ -1,6 +1,7 @@
 from flask import Flask, jsonify
 from flask_cors import CORS
 from flask_socketio import SocketIO, emit
+import os
 
 app = Flask(__name__)
 CORS(app, resources={r"/*": {"origins": ["https://haibadguy.github.io", "https://haibadguy.github.io/pyWebRTC"]}})
@@ -39,4 +40,6 @@ def handle_disconnect():
     print("A client disconnected")
 
 if __name__ == '__main__':
-    socketio.run(app, debug=False, host='0.0.0.0', port=5000)
+    port = int(os.environ.get('PORT', 5000))  # Lấy port từ biến môi trường, mặc định là 5000 nếu không có.
+    socketio.run(app, debug=False, host='0.0.0.0', port=port)
+
