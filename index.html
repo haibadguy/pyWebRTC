@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="vi">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -7,6 +8,7 @@
     <link rel="stylesheet" href="style.css"> <!-- Kết nối file CSS -->
     <script src="https://cdn.socket.io/4.0.0/socket.io.min.js"></script> <!-- Kết nối Socket.IO -->
 </head>
+
 <body>
     <div class="container">
         <h1>Socket.IO WebRTC</h1>
@@ -34,23 +36,104 @@
     </div>
 
     <script>
-        // Tạo kết nối Socket.IO đến server
+        // Tạo kết nối WebRTC Peer
+        let localStream;
+        let remoteStream;
+        let peerConnection;
+        const configuration = {
+            iceServers: [{
+                urls: 'stun:stun.l.google.com:19302' // Google STUN server
+            }]
+        };
+
+        // Kết nối WebRTC và gửi offer, nhận answer và candidates
         const socket = io('https://pywebrtc.onrender.com', {
-            transports: ['websocket'], // Sử dụng WebSocket nếu có thể
+            transports: ['websocket']
         });
 
-        // Kiểm tra kết nối thành công
         socket.on('connect', () => {
             console.log('Đã kết nối đến server!');
         });
 
-        // Lắng nghe sự kiện khi server gửi tin nhắn
-        socket.on('message', (data) => {
-            console.log('Tin nhắn từ server: ', data);
-            // Hiển thị tin nhắn từ server
-            const messageDiv = document.createElement('div');
-            messageDiv.textContent = 'Server: ' + data;
-            document.getElementById('receivedMessages').appendChild(messageDiv);
+        // Khởi tạo stream và video local
+        async function startVideo() {
+            try {
+                localStream = await navigator.mediaDevices.getUserMedia({
+                    video: true,
+                    audio: true
+                });
+                document.getElementById('localVideo').srcObject = localStream;
+            } catch (err) {
+                console.error('Không thể lấy video hoặc âm thanh', err);
+            }
+        }
+
+        // Tạo peer connection và gửi offer
+        document.getElementById('startButton').addEventListener('click', async () => {
+            await startVideo();
+
+            peerConnection = new RTCPeerConnection(configuration);
+
+            // Gửi stream local đến peer connection
+            localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
+
+            peerConnection.onicecandidate = function (event) {
+                if (event.candidate) {
+                    socket.emit('candidate', event.candidate);
+                }
+            };
+
+            peerConnection.ontrack = function (event) {
+                remoteStream = event.streams[0];
+                document.getElementById('remoteVideo').srcObject = remoteStream;
+            };
+
+            // Tạo offer và gửi đến server
+            const offer = await peerConnection.createOffer();
+            await peerConnection.setLocalDescription(offer);
+            socket.emit('offer', offer);
+        });
+
+        // Nhận offer từ server và trả lời với answer
+        socket.on('offer', async (offer) => {
+            if (!peerConnection) {
+                await startVideo();
+                peerConnection = new RTCPeerConnection(configuration);
+
+                localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
+
+                peerConnection.onicecandidate = function (event) {
+                    if (event.candidate) {
+                        socket.emit('candidate', event.candidate);
+                    }
+                };
+
+                peerConnection.ontrack = function (event) {
+                    remoteStream = event.streams[0];
+                    document.getElementById('remoteVideo').srcObject = remoteStream;
+                };
+            }
+
+            await peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
+
+            // Tạo answer và gửi về server
+            const answer = await peerConnection.createAnswer();
+            await peerConnection.setLocalDescription(answer);
+            socket.emit('answer', answer);
+        });
+
+        // Nhận ICE candidate từ server
+        socket.on('candidate', (candidate) => {
+            if (peerConnection) {
+                peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
+            }
+        });
+
+        // Nhận answer từ server
+        socket.on('answer', (answer) => {
+            if (peerConnection) {
+                peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
+            }
         });
 
         // Xử lý gửi tin nhắn từ client
@@ -68,6 +151,16 @@
                 messageInput.value = '';
             }
         });
+
+        // Lắng nghe sự kiện khi server gửi tin nhắn
+        socket.on('message', (data) => {
+            console.log('Tin nhắn từ server: ', data);
+            // Hiển thị tin nhắn từ server
+            const messageDiv = document.createElement('div');
+            messageDiv.textContent = 'Server: ' + data;
+            document.getElementById('receivedMessages').appendChild(messageDiv);
+        });
     </script>
 </body>
+
 </html>
