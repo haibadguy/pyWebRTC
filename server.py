@@ -3,7 +3,7 @@ from flask_cors import CORS
 from flask_socketio import SocketIO, emit
 
 app = Flask(__name__)
-CORS(app, resources={r"/*": {"origins": "https://haibadguy.github.io"}})
+CORS(app, resources={r"/*": {"origins": "https://haibadguy.github.io/pyWebRTC"}})
 
 # Cấu hình SocketIO
 socketio = SocketIO(app, async_mode='eventlet')
