@@ -2,6 +2,7 @@ from quart import Quart, request
 from quart_cors import cors
 import socketio
 from aiortc import RTCPeerConnection, RTCSessionDescription
+from aiortc import RTCIceCandidate
 import logging
 
 # Logging configuration
