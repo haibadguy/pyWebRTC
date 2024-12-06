@@ -98,7 +98,7 @@
                 // Gửi ICE candidate đến server
                 pc.onicecandidate = event => {
                     if (event.candidate) {
-                        socket.emit('candidate', { candidate: event.candidate });
+                        socket.emit('candidate', { candidate: event.candidate.toJSON() });
                     }
                 };
 
@@ -115,7 +115,7 @@
                     console.log('Answer received and set as remote description.');
                 });
 
-                    // Lắng nghe ICE candidate từ server
+                // Lắng nghe ICE candidate từ server
                 socket.on('candidate', async data => {
                     if (data.candidate) {
                         try {
@@ -126,9 +126,6 @@
                         }
                     }
                 });
-
-
-
             } catch (error) {
                 console.error('Error starting call:', error);
                 alert('Error: ' + error.message);
