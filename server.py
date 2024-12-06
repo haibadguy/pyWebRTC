@@ -57,7 +57,7 @@ async def handle_candidate(sid, data):
         candidate_data = data.get("candidate")
         if candidate_data:
             logging.info("Received candidate: %s", candidate_data)
-            # Chuyển đổi candidate_data thành RTCIceCandidate
+            # Convert candidate_data to RTCIceCandidate
             candidate = RTCIceCandidate(candidate_data)
             for pc in pcs:
                 await pc.addIceCandidate(candidate)
