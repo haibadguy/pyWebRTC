@@ -1,78 +1,100 @@
-from quart import Quart, request
-from quart_cors import cors
-import socketio
-from aiortc import RTCPeerConnection, RTCSessionDescription
-from aiortc import RTCIceCandidate
+import asyncio
+import json
 import logging
+from aiortc import RTCIceCandidate, RTCPeerConnection, RTCSessionDescription
+from websockets import serve
 
-# Logging configuration
 logging.basicConfig(level=logging.INFO)
 
-# Initialize Quart and Socket.IO
-app = Quart(__name__)
-app = cors(app, allow_origin="*")
-sio = socketio.AsyncServer(async_mode="asgi", cors_allowed_origins="*")
-app_asgi = socketio.ASGIApp(sio, app)
+# Lớp xử lý kết nối WebRTC
+class WebRTCSignaling:
+    def __init__(self):
+        self.connections = {}
 
-pcs = set()  # Track active PeerConnections
+    async def handle_connection(self, websocket, path):
+        logging.info(f"New connection from {websocket.remote_address}")
 
-@app.route("/")
-async def index():
-    return "WebRTC Server is running!"
+        try:
+            async for message in websocket:
+                data = json.loads(message)
+                if data["type"] == "offer":
+                    # Xử lý offer và tạo peer connection
+                    await self.handle_offer(websocket, data)
+                elif data["type"] == "answer":
+                    # Xử lý answer
+                    await self.handle_answer(websocket, data)
+                elif data["type"] == "candidate":
+                    # Xử lý ICE candidate
+                    await self.handle_candidate(websocket, data)
+        except Exception as e:
+            logging.error(f"Error handling connection: {e}")
+        finally:
+            # Đảm bảo đóng kết nối khi kết thúc
+            if websocket.remote_address in self.connections:
+                del self.connections[websocket.remote_address]
 
-@sio.on("offer")
-async def handle_offer(sid, data):
-    logging.info("Received offer: %s", data)
-    try:
-        pc = RTCPeerConnection()
-        pcs.add(pc)
-
-        # Set remote description
+    async def handle_offer(self, websocket, data):
+        logging.info("Received offer")
         offer = RTCSessionDescription(sdp=data["sdp"], type=data["type"])
+        pc = RTCPeerConnection()
+        pc_id = f"PeerConnection({websocket.remote_address})"
+        self.connections[websocket.remote_address] = pc
+
+        @pc.on("icecandidate")
+        def on_icecandidate(candidate):
+            if candidate:
+                logging.info(f"Sending ICE candidate to {websocket.remote_address}")
+                candidate_data = candidate.to_dict()
+                asyncio.create_task(websocket.send(json.dumps({
+                    "type": "candidate",
+                    "candidate": candidate_data
+                })))
+
         await pc.setRemoteDescription(offer)
 
-        # Create answer and send it to the client
+        # Tạo và gửi answer
         answer = await pc.createAnswer()
         await pc.setLocalDescription(answer)
+        await websocket.send(json.dumps({
+            "type": "answer",
+            "sdp": pc.localDescription.sdp
+        }))
 
-        await sio.emit("answer", {
-            "sdp": pc.localDescription.sdp,
-            "type": pc.localDescription.type,
-        }, room=sid)
+    async def handle_answer(self, websocket, data):
+        logging.info("Received answer")
+        answer = RTCSessionDescription(sdp=data["sdp"], type=data["type"])
+        pc = self.connections.get(websocket.remote_address)
+        if pc:
+            await pc.setRemoteDescription(answer)
 
-        # Handle ICE candidates
-        @pc.on("icecandidate")
-        async def on_icecandidate(candidate):
-            if candidate:
-                await sio.emit("candidate", {"candidate": candidate.to_json()}, room=sid)
-                logging.info("Sent candidate: %s", candidate)
+    async def handle_candidate(self, websocket, data):
+        logging.info("Received ICE candidate")
+        candidate_data = data["candidate"]
+        candidate = RTCIceCandidate(
+            foundation=candidate_data["foundation"],
+            component=candidate_data["component"],
+            transport=candidate_data["transport"],
+            priority=candidate_data["priority"],
+            ip=candidate_data["ip"],
+            port=candidate_data["port"],
+            type=candidate_data["type"],
+            raddr=candidate_data.get("raddr", ""),
+            rport=candidate_data.get("rport", 0),
+            generation=candidate_data["generation"],
+            ufrag=candidate_data["ufrag"],
+            network_id=candidate_data["network-id"],
+            network_cost=candidate_data["network-cost"]
+        )
+        pc = self.connections.get(websocket.remote_address)
+        if pc:
+            await pc.addIceCandidate(candidate)
 
-    except Exception as e:
-        logging.error("Error handling offer: %s", e)
-
-@sio.on("candidate")
-async def handle_candidate(sid, data):
-    """Handle ICE candidates from the client."""
-    try:
-        candidate_data = data.get("candidate")
-        if candidate_data:
-            logging.info("Received candidate: %s", candidate_data)
-            # Convert candidate_data to RTCIceCandidate
-            candidate = RTCIceCandidate(candidate_data)
-            for pc in pcs:
-                await pc.addIceCandidate(candidate)
-                logging.info("Added candidate to PeerConnection.")
-    except Exception as e:
-        logging.error("Error handling candidate: %s", e)
-
-@sio.on("cleanup")
-async def handle_cleanup(sid):
-    """Cleanup resources when the client disconnects."""
-    logging.info("Cleaning up resources.")
-    for pc in pcs:
-        await pc.close()
-    pcs.clear()
+# Chạy WebSocket server
+async def main():
+    signaling = WebRTCSignaling()
+    async with serve(signaling.handle_connection, "localhost", 8765):
+        logging.info("WebSocket server is running on ws://localhost:8765")
+        await asyncio.Future()  # Keep the server running indefinitely
 
 if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(app_asgi, host="0.0.0.0", port=5000)
+    asyncio.run(main())
