@@ -115,13 +115,19 @@
                     console.log('Answer received and set as remote description.');
                 });
 
-                // Lắng nghe ICE candidate từ server
+                    // Lắng nghe ICE candidate từ server
                 socket.on('candidate', async data => {
                     if (data.candidate) {
-                        await pc.addIceCandidate(new RTCIceCandidate(data.candidate));
-                        console.log('ICE candidate added.');
+                        try {
+                            await pc.addIceCandidate(new RTCIceCandidate(data.candidate));
+                            console.log('ICE candidate added.');
+                        } catch (error) {
+                            console.error('Error adding ICE candidate:', error);
+                        }
                     }
                 });
+
+
 
             } catch (error) {
                 console.error('Error starting call:', error);
