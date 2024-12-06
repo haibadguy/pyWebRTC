@@ -53,11 +53,14 @@ async def handle_offer(sid, data):
 async def handle_candidate(sid, data):
     """Handle ICE candidates from the client."""
     try:
-        candidate = data.get("candidate")
-        if candidate:
-            logging.info("Received candidate: %s", candidate)
+        candidate_data = data.get("candidate")
+        if candidate_data:
+            logging.info("Received candidate: %s", candidate_data)
+            # Chuyển đổi candidate_data thành RTCIceCandidate
+            candidate = RTCIceCandidate(candidate_data)
             for pc in pcs:
                 await pc.addIceCandidate(candidate)
+                logging.info("Added candidate to PeerConnection.")
     except Exception as e:
         logging.error("Error handling candidate: %s", e)
 
