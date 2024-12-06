@@ -1,7 +1,5 @@
 quart
 quart-cors
 python-socketio
-eventlet
 aiortc
-uvicorn
 websockets
