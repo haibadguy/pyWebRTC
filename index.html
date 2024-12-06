@@ -46,7 +46,7 @@
     <button id="reset">Reset</button>
 
     <script>
-        const socket = io(); // Kết nối với server qua Socket.IO
+        const socket = io("https://pywebrtc.onrender.com"); // Địa chỉ server Socket.IO
         const startCallButton = document.getElementById('startCall');
         const resetButton = document.getElementById('reset');
         const localVideo = document.getElementById('localVideo');
@@ -55,7 +55,6 @@
         let localStream;
         let pc;
 
-        // ICE servers từ Xirsys
         const iceServers = [
             {
                 urls: ["stun:hk-turn1.xirsys.com"]
@@ -76,7 +75,7 @@
 
         async function startCall() {
             try {
-                // Lấy stream từ webcam/microphone
+                // Lấy stream từ camera/microphone
                 localStream = await navigator.mediaDevices.getUserMedia({
                     video: true,
                     audio: true
@@ -86,10 +85,10 @@
                 // Tạo PeerConnection
                 pc = new RTCPeerConnection({ iceServers });
 
-                // Thêm tracks của localStream vào PeerConnection
+                // Thêm track vào PeerConnection
                 localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
 
-                // Nhận remote stream và gán vào remoteVideo
+                // Xử lý remote stream
                 pc.ontrack = event => {
                     if (event.streams && event.streams[0]) {
                         remoteVideo.srcObject = event.streams[0];
@@ -103,37 +102,35 @@
                     }
                 };
 
-                // Tạo SDP offer
+                // Tạo offer và gửi đến server
                 const offer = await pc.createOffer();
                 await pc.setLocalDescription(offer);
+                socket.emit('offer', { sdp: pc.localDescription.sdp, type: pc.localDescription.type });
 
-                // Gửi offer đến server
-                socket.emit('offer', {
-                    sdp: pc.localDescription.sdp,
-                    type: pc.localDescription.type
-                });
+                console.log("Offer sent to server.");
 
                 // Lắng nghe answer từ server
-                socket.on('answer', async answer => {
-                    await pc.setRemoteDescription(answer);
-                    console.log('Đã kết nối WebRTC!');
+                socket.on('answer', async data => {
+                    await pc.setRemoteDescription(new RTCSessionDescription(data));
+                    console.log('Answer received and set as remote description.');
                 });
 
-                // Lắng nghe ICE candidates từ server
+                // Lắng nghe ICE candidate từ server
                 socket.on('candidate', async data => {
                     if (data.candidate) {
-                        await pc.addIceCandidate(data.candidate);
+                        await pc.addIceCandidate(new RTCIceCandidate(data.candidate));
+                        console.log('ICE candidate added.');
                     }
                 });
 
             } catch (error) {
-                console.error('Lỗi khi bắt đầu cuộc gọi:', error);
-                alert(`Lỗi: ${error.message}`);
+                console.error('Error starting call:', error);
+                alert('Error: ' + error.message);
             }
         }
 
         function reset() {
-            // Dừng stream và đóng PeerConnection
+            // Reset video và kết nối
             if (pc) {
                 pc.close();
                 pc = null;
@@ -145,10 +142,15 @@
             localVideo.srcObject = null;
             remoteVideo.srcObject = null;
 
-            // Gửi tín hiệu dọn dẹp đến server
+            // Thông báo server dọn dẹp
             socket.emit('cleanup');
-            console.log('Đã reset cuộc gọi.');
+            console.log('Call reset.');
         }
+
+        // Kết nối socket lỗi
+        socket.on('connect_error', () => {
+            console.error('Cannot connect to WebSocket server.');
+        });
 
         startCallButton.addEventListener('click', startCall);
         resetButton.addEventListener('click', reset);
