@@ -1,7 +1,5 @@
 quart
 quart-cors
-aiortc
-eventlet
 python-socketio
-python-engineio
-quart-socketio
+eventlet
+aiortc
