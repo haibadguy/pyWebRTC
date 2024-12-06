@@ -1,6 +1,4 @@
-flask
-flask-socketio
+quart
+quart-cors
 aiortc
 eventlet
-
-
