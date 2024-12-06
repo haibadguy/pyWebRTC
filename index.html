@@ -1,137 +1,157 @@
 <!DOCTYPE html>
-<html lang="vi">
+<html lang="en">
 
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Socket.IO WebRTC</title>
-    <script src="https://cdn.socket.io/4.0.0/socket.io.min.js"></script> <!-- Kết nối Socket.IO -->
+    <title>WebRTC Demo</title>
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            text-align: center;
+            margin: 20px;
+        }
+
+        video {
+            width: 45%;
+            margin: 10px;
+            border: 2px solid #ccc;
+            border-radius: 5px;
+        }
+
+        button {
+            margin: 10px;
+            padding: 10px 20px;
+            font-size: 16px;
+            cursor: pointer;
+            background-color: #007BFF;
+            color: white;
+            border: none;
+            border-radius: 5px;
+        }
+
+        button:hover {
+            background-color: #0056b3;
+        }
+    </style>
 </head>
 
 <body>
-    <h1>WebRTC Socket.IO</h1>
-
-    <!-- Video -->
-    <video id="localVideo" autoplay muted></video>
-    <video id="remoteVideo" autoplay></video>
-
-    <!-- Nút điều khiển -->
-    <button id="startCallButton">Start Call</button>
-    <button id="resetButton">Reset</button>
+    <h1>WebRTC Video Call</h1>
+    <video id="localVideo" autoplay playsinline muted></video>
+    <video id="remoteVideo" autoplay playsinline></video>
+    <br>
+    <button id="startCall">Start Call</button>
+    <button id="reset">Reset</button>
 
     <script>
-        const socket = io('https://pywebrtc.onrender.com'); // Kết nối với server
+        const socket = io(); // Kết nối với server qua Socket.IO
+        const startCallButton = document.getElementById('startCall');
+        const resetButton = document.getElementById('reset');
+        const localVideo = document.getElementById('localVideo');
+        const remoteVideo = document.getElementById('remoteVideo');
+
         let localStream;
-        let peerConnection;
-        let isCaller = false;
+        let pc;
 
-        // Khi kết nối đến server
-        socket.on('connect', () => {
-            console.log('Connected to server');
-        });
-
-        // Lắng nghe offer từ server
-        socket.on('offer', (data) => {
-            console.log("Received offer", data);
-            if (!peerConnection) {
-                startPeerConnection();
+        // ICE servers từ Xirsys
+        const iceServers = [
+            {
+                urls: ["stun:hk-turn1.xirsys.com"]
+            },
+            {
+                username: "SttrajDEB50ibE6G_TVM74Oby_gra5w4ioQXEBAMIjMsXLhdNORjC2_Fs8iUkCH6AAAAAGdRCq5ob25naGFp",
+                credential: "8f99dd52-b2ad-11ef-9d1d-0242ac120004",
+                urls: [
+                    "turn:hk-turn1.xirsys.com:80?transport=udp",
+                    "turn:hk-turn1.xirsys.com:3478?transport=udp",
+                    "turn:hk-turn1.xirsys.com:80?transport=tcp",
+                    "turn:hk-turn1.xirsys.com:3478?transport=tcp",
+                    "turns:hk-turn1.xirsys.com:443?transport=tcp",
+                    "turns:hk-turn1.xirsys.com:5349?transport=tcp"
+                ]
             }
+        ];
 
-            peerConnection.setRemoteDescription(new RTCSessionDescription(data))
-                .then(() => peerConnection.createAnswer())
-                .then((answer) => peerConnection.setLocalDescription(answer))
-                .then(() => {
-                    socket.emit('answer', peerConnection.localDescription);
-                })
-                .catch((error) => {
-                    console.error('Error handling offer:', error);
-                });
-        });
-
-        // Lắng nghe answer từ server
-        socket.on('answer', (data) => {
-            console.log("Received answer", data);
-            if (peerConnection.signalingState !== "stable") {
-                peerConnection.setRemoteDescription(new RTCSessionDescription(data))
-                    .catch((error) => {
-                        console.error('Error setting remote description:', error);
-                    });
-            } else {
-                console.log("Ignoring the answer because the connection is in stable state.");
-            }
-        });
-
-        // Lắng nghe ICE candidates
-        socket.on('candidate', (candidate) => {
-            console.log("Received ICE candidate", candidate);
-            peerConnection.addIceCandidate(new RTCIceCandidate(candidate))
-                .catch((error) => {
-                    console.error('Error adding ICE candidate:', error);
-                });
-        });
-
-        // Tạo PeerConnection mới khi bắt đầu cuộc gọi
-        function startCall() {
-            navigator.mediaDevices.getUserMedia({
+        async function startCall() {
+            try {
+                // Lấy stream từ webcam/microphone
+                localStream = await navigator.mediaDevices.getUserMedia({
                     video: true,
                     audio: true
-                })
-                .then((stream) => {
-                    document.getElementById('localVideo').srcObject = stream;
-                    localStream = stream;
-                    startPeerConnection();
-                    localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
-
-                    if (peerConnection.signalingState === "stable") {
-                        peerConnection.createOffer()
-                            .then((offer) => peerConnection.setLocalDescription(offer))
-                            .then(() => {
-                                socket.emit('offer', peerConnection.localDescription);
-                            })
-                            .catch((error) => {
-                                console.error('Error creating offer:', error);
-                            });
-                    }
-                })
-                .catch((error) => {
-                    console.error('Error accessing media devices:', error);
                 });
-        }
+                localVideo.srcObject = localStream;
 
-        // Tạo PeerConnection và thiết lập các sự kiện
-        function startPeerConnection() {
-            if (peerConnection) return; // Tránh tạo nhiều PeerConnection
-            peerConnection = new RTCPeerConnection();
+                // Tạo PeerConnection
+                pc = new RTCPeerConnection({ iceServers });
 
-            peerConnection.onicecandidate = (event) => {
-                if (event.candidate) {
-                    socket.emit('candidate', event.candidate);
-                }
-            };
+                // Thêm tracks của localStream vào PeerConnection
+                localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
 
-            peerConnection.ontrack = (event) => {
-                document.getElementById('remoteVideo').srcObject = event.streams[0];
-            };
-        }
+                // Nhận remote stream và gán vào remoteVideo
+                pc.ontrack = event => {
+                    if (event.streams && event.streams[0]) {
+                        remoteVideo.srcObject = event.streams[0];
+                    }
+                };
 
-        // Reset cuộc gọi
-        function resetCall() {
-            if (peerConnection) {
-                peerConnection.close();
-                peerConnection = null;
+                // Gửi ICE candidate đến server
+                pc.onicecandidate = event => {
+                    if (event.candidate) {
+                        socket.emit('candidate', { candidate: event.candidate });
+                    }
+                };
+
+                // Tạo SDP offer
+                const offer = await pc.createOffer();
+                await pc.setLocalDescription(offer);
+
+                // Gửi offer đến server
+                socket.emit('offer', {
+                    sdp: pc.localDescription.sdp,
+                    type: pc.localDescription.type
+                });
+
+                // Lắng nghe answer từ server
+                socket.on('answer', async answer => {
+                    await pc.setRemoteDescription(answer);
+                    console.log('Đã kết nối WebRTC!');
+                });
+
+                // Lắng nghe ICE candidates từ server
+                socket.on('candidate', async data => {
+                    if (data.candidate) {
+                        await pc.addIceCandidate(data.candidate);
+                    }
+                });
+
+            } catch (error) {
+                console.error('Lỗi khi bắt đầu cuộc gọi:', error);
+                alert(`Lỗi: ${error.message}`);
             }
+        }
 
+        function reset() {
+            // Dừng stream và đóng PeerConnection
+            if (pc) {
+                pc.close();
+                pc = null;
+            }
             if (localStream) {
                 localStream.getTracks().forEach(track => track.stop());
+                localStream = null;
             }
+            localVideo.srcObject = null;
+            remoteVideo.srcObject = null;
 
-            document.getElementById('localVideo').srcObject = null;
-            document.getElementById('remoteVideo').srcObject = null;
+            // Gửi tín hiệu dọn dẹp đến server
+            socket.emit('cleanup');
+            console.log('Đã reset cuộc gọi.');
         }
 
-        // Sự kiện khi nhấn nút
-        document.getElementById('startCallButton').addEventListener('click', startCall);
-        document.getElementById('resetButton').addEventListener('click', resetCall);
+        startCallButton.addEventListener('click', startCall);
+        resetButton.addEventListener('click', reset);
     </script>
 </body>
 
