@@ -1,89 +1,66 @@
 import os
 import logging
-from flask import Flask, send_from_directory, jsonify
-from flask_socketio import SocketIO
+from quart import Quart, jsonify, request, send_from_directory
 from aiortc import RTCPeerConnection, RTCSessionDescription
-from aiortc.contrib.signaling import BYE
+from quart_cors import cors
 
-# Khởi tạo Flask app và SocketIO
-app = Flask(__name__)
-socketio = SocketIO(app, cors_allowed_origins="*")
+# Khởi tạo ứng dụng Quart
+app = Quart(__name__)
+app = cors(app)
+
 logging.basicConfig(level=logging.INFO)
 
-pcs = set()  # Lưu các PeerConnection đang hoạt động
+# Quản lý các kết nối PeerConnection
+pcs = set()
 
 @app.route('/')
-def index():
-    """Trả về file index.html"""
-    return send_from_directory(os.getcwd(), 'index.html')
+async def index():
+    return await send_from_directory(os.getcwd(), 'index.html')
 
-@socketio.on('offer')
-async def handle_offer(data):
-    """Xử lý SDP offer từ client"""
+@app.route('/offer', methods=['POST'])
+async def offer():
     try:
-        sdp = data.get('sdp')
-        type_ = data.get('type')
-
-        if not sdp or not type_:
-            socketio.emit('error', {'error': 'Invalid SDP or type'})
-            return
+        params = await request.get_json()
+        if not params or 'sdp' not in params or 'type' not in params:
+            return jsonify({'error': 'Invalid request'}), 400
 
         # Tạo PeerConnection
         pc = RTCPeerConnection()
         pcs.add(pc)
 
-        @pc.on("icecandidate")
-        def on_icecandidate(event):
-            """Lắng nghe các ICE candidate"""
+        @pc.on('icecandidate')
+        async def on_icecandidate(event):
             if event.candidate:
-                socketio.emit('candidate', {'candidate': event.candidate.to_dict()})
+                logging.info('New ICE candidate: %s', event.candidate)
             else:
-                logging.info("Đã gửi hết các ICE candidate")
+                logging.info('All ICE candidates have been sent.')
 
-        @pc.on("track")
-        def on_track(track):
-            """Xử lý track từ remote peer"""
-            logging.info(f"Đã nhận track: {track.kind}")
-            if track.kind == "video":
-                logging.info("Xử lý track video")
-            elif track.kind == "audio":
-                logging.info("Xử lý track audio")
+        @pc.on('track')
+        async def on_track(track):
+            logging.info('Received track: %s', track.kind)
 
-        # Đặt SDP và tạo SDP answer
-        offer = RTCSessionDescription(sdp, type_)
+        # Đặt SDP từ offer và tạo answer
+        offer = RTCSessionDescription(sdp=params['sdp'], type=params['type'])
         await pc.setRemoteDescription(offer)
+
         answer = await pc.createAnswer()
         await pc.setLocalDescription(answer)
 
-        # Trả SDP answer cho client
-        socketio.emit('answer', {
-            'sdp': pc.localDescription.sdp,
-            'type': pc.localDescription.type
-        })
-    except Exception as e:
-        logging.error(f"Xảy ra lỗi: {e}")
-        socketio.emit('error', {'error': 'Lỗi xử lý offer'})
+        logging.info("Generated SDP answer for the offer.")
 
-@socketio.on('candidate')
-async def handle_candidate(data):
-    """Xử lý ICE candidate từ client"""
-    try:
-        candidate = data.get('candidate')
-        if candidate:
-            pc = next(iter(pcs))
-            await pc.addIceCandidate(candidate)
+        return jsonify({'sdp': pc.localDescription.sdp, 'type': pc.localDescription.type})
     except Exception as e:
-        logging.error(f"Xảy ra lỗi: {e}")
+        logging.error("Error processing offer: %s", e)
+        return jsonify({'error': 'Failed to process offer'}), 500
 
-@socketio.on('cleanup')
-def cleanup():
-    """Đóng tất cả các kết nối PeerConnection"""
-    logging.info("Dọn dẹp các kết nối PeerConnection")
+@app.route('/cleanup', methods=['POST'])
+async def cleanup():
+    logging.info("Cleaning up peer connections.")
     for pc in pcs:
-        pc.close()
+        await pc.close()
     pcs.clear()
-    socketio.emit('cleanup_done', {'status': 'Đã dọn dẹp'})
+    return jsonify({'status': 'Cleaned up'})
 
 if __name__ == '__main__':
-    port = int(os.getenv('PORT', 5000))  # PORT từ biến môi trường
-    socketio.run(app, host='0.0.0.0', port=port)
+    port = int(os.getenv('PORT', 5000))
+    app.run(debug=True, host='0.0.0.0', port=port)
